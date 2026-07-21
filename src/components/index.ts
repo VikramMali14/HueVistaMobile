@@ -17,3 +17,4 @@ export type { MeterProps } from './Meter';
 export { Screen } from './Screen';
 export type { ScreenProps } from './Screen';
 export { BrandMark } from './BrandMark';
+export { AuthedImage } from './AuthedImage';

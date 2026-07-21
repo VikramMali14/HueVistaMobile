@@ -10,3 +10,14 @@ export const API_ORIGIN = (process.env.EXPO_PUBLIC_API_ORIGIN ?? 'http://localho
 
 /** Prefix for all backend routes (they all live under /api — see PLAN.md §5). */
 export const API_BASE = `${API_ORIGIN}/api`;
+
+/**
+ * Resolve a backend image URL. The API returns either an absolute URL (S3) or an
+ * origin-relative path (`/api/images/files/...`). Both image files and region
+ * masks are auth-gated, so load them with the bearer token attached.
+ */
+export function resolveImageUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
+}

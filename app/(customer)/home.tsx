@@ -29,7 +29,7 @@ export default function Home() {
       </View>
 
       {/* Primary CTA — the core loop starts here. */}
-      <Pressable onPress={() => router.push('/visualize')} style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}>
+      <Pressable onPress={() => router.push('/new-project')} style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}>
         <Card style={styles.cta}>
           <View style={styles.ctaIcon}>
             <Ionicons name="sparkles" size={22} color={colors.accentSoft} />
