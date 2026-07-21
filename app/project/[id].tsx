@@ -1,16 +1,20 @@
-import { useState } from 'react';
-import { View, StyleSheet, Pressable, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, StyleSheet, Pressable, ScrollView, ActivityIndicator, useWindowDimensions, Share } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
+import { captureRef } from 'react-native-view-shot';
 import { Text, Button, Card, StatusPill } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
-import { projectsApi, regionMaskUrl, resolveImageUrl, ApiError } from '../../src/api';
+import { projectsApi, regionMaskUrl, resolveImageUrl, recommendationsApi, ApiError, RecommendationResponse } from '../../src/api';
 import { useAuthedSkImage, PaintedPhoto, PaintLayer } from '../../src/engine';
 import { usePopularShades } from '../../src/shades/queries';
 import { summaryToShade, Shade } from '../../src/shades/types';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
+import { RecommendationsSheet } from '../../src/projects/RecommendationsSheet';
 
 type Applied = { hex: string; code?: string };
 
@@ -37,6 +41,17 @@ export default function ProjectEditor() {
   const [starting, setStarting] = useState(false);
   const [segmentError, setSegmentError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // AI suggest + Share.
+  const [recsOpen, setRecsOpen] = useState(false);
+  const [recs, setRecs] = useState<RecommendationResponse | null>(null);
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [recsError, setRecsError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [savingImg, setSavingImg] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const shotRef = useRef<View>(null);
 
   // Select the first region once segmentation lands (guarded one-time set).
   if (selectedRegionId == null && regions.length > 0) {
@@ -70,6 +85,58 @@ export default function ProjectEditor() {
       setSaveError(null);
     } catch {
       setSaveError('Couldn’t save that colour — it shows here but may not persist.');
+    }
+  }
+
+  async function openRecommendations() {
+    setRecsOpen(true);
+    if (recs || recsLoading) return; // fetch once — it consumes an AI generation
+    setRecsLoading(true);
+    setRecsError(null);
+    try {
+      setRecs(await recommendationsApi.get(id));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 402) {
+        setRecsError('You’ve used your AI suggestions on this plan.');
+      } else {
+        setRecsError(err instanceof ApiError ? err.message : 'Couldn’t get suggestions. Please try again.');
+      }
+    } finally {
+      setRecsLoading(false);
+    }
+  }
+
+  async function doShare() {
+    setSharing(true);
+    setActionError(null);
+    setActionMsg(null);
+    try {
+      const res = await projectsApi.share(id, { days: 7 });
+      await Share.share({ message: `See my room in HueVista: ${res.shareUrl}`, url: res.shareUrl });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Couldn’t create a share link.');
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function doSaveImage() {
+    setActionError(null);
+    setActionMsg(null);
+    try {
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (!perm.granted) {
+        setActionError('Photos permission is needed to save. You can enable it in Settings.');
+        return;
+      }
+      setSavingImg(true);
+      const uri = await captureRef(shotRef, { format: 'png', quality: 1 });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      setActionMsg('Saved to your Photos ✓');
+    } catch {
+      setActionError('Couldn’t save the image. Please try again.');
+    } finally {
+      setSavingImg(false);
     }
   }
 
@@ -110,7 +177,7 @@ export default function ProjectEditor() {
       </Text>
 
       {/* Canvas */}
-      <View style={[styles.canvasFrame, { height: canvasH }]}>
+      <View ref={shotRef} collapsable={false} style={[styles.canvasFrame, { height: canvasH }]}>
         {isLoading || !photo ? (
           <View style={styles.canvasCenter}>
             <ActivityIndicator color={colors.accent} />
@@ -168,6 +235,42 @@ export default function ProjectEditor() {
 
       {status === 'SEGMENTED' && regions.length > 0 ? (
         <>
+          {/* AI suggest · Share · Save */}
+          <View style={styles.actionsRow}>
+            <Button
+              label="Suggest"
+              variant="secondary"
+              icon={<Ionicons name="sparkles" size={16} color={colors.fg} />}
+              onPress={openRecommendations}
+              style={styles.actionBtn}
+            />
+            <Button
+              label="Share"
+              variant="secondary"
+              loading={sharing}
+              icon={<Ionicons name="share-social" size={16} color={colors.fg} />}
+              onPress={doShare}
+              style={styles.actionBtn}
+            />
+            <Button
+              label="Save"
+              variant="secondary"
+              loading={savingImg}
+              icon={<Ionicons name="download-outline" size={16} color={colors.fg} />}
+              onPress={doSaveImage}
+              style={styles.actionBtn}
+            />
+          </View>
+          {actionError ? (
+            <Text variant="caption" color={colors.danger}>
+              {actionError}
+            </Text>
+          ) : actionMsg ? (
+            <Text variant="caption" color={colors.success}>
+              {actionMsg}
+            </Text>
+          ) : null}
+
           {/* Region chips */}
           <View style={styles.block}>
             <Text variant="label">Wall</Text>
@@ -212,6 +315,18 @@ export default function ProjectEditor() {
           </View>
         </>
       ) : null}
+
+      <RecommendationsSheet
+        visible={recsOpen}
+        onClose={() => setRecsOpen(false)}
+        loading={recsLoading}
+        error={recsError}
+        data={recs}
+        onApply={(s) => {
+          applyShade(s);
+          setRecsOpen(false);
+        }}
+      />
     </ScrollView>
   );
 }
@@ -230,6 +345,8 @@ const styles = StyleSheet.create({
   canvasCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   canvasOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.scrim },
   block: { gap: spacing.sm },
+  actionsRow: { flexDirection: 'row', gap: spacing.md },
+  actionBtn: { flex: 1 },
   rowGap: { gap: spacing.sm, paddingVertical: spacing.xs },
   regionChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radius.pill, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   regionChipActive: { backgroundColor: colors.accentGhost, borderColor: colors.accent },

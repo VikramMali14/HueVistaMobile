@@ -9,10 +9,12 @@ interface Props {
   shade: ShadeSummary | null;
   onClose: () => void;
   onTryOnWall: (shade: ShadeSummary) => void;
+  /** Primary action label (default "Try on wall"; guests get a sign-in CTA). */
+  tryLabel?: string;
 }
 
 /** Bottom-sheet detail for one shade, fetching AI-enriched fields on open. */
-export function ShadeDetailSheet({ shade, onClose, onTryOnWall }: Props) {
+export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try on wall' }: Props) {
   // Enabled only when we have a brand slug + code; disabled (and null) when closed.
   const { data: detail, isLoading } = useShadeDetail(shade?.brandSlug ?? undefined, shade?.shadeCode);
 
@@ -72,7 +74,7 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall }: Props) {
           ) : null}
 
           <Button
-            label="Try on wall"
+            label={tryLabel}
             size="lg"
             fullWidth
             disabled={!hex}

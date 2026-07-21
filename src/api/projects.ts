@@ -4,8 +4,10 @@ import { z } from 'zod';
 import {
   projectSchema,
   projectSummarySchema,
+  shareResponseSchema,
   Project,
   ProjectSummary,
+  ShareResponse,
 } from './projectSchemas';
 
 const summaryListSchema = z.array(projectSummarySchema);
@@ -61,6 +63,16 @@ export const projectsApi = {
 
   remove(id: string): Promise<void> {
     return apiFetch(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(() => undefined);
+  },
+
+  /** Create a time-limited public share link. days ∈ {3,7,14} (default 7);
+   *  brands = comma-separated companies the viewer may repaint with (blank = all). */
+  share(id: string, opts: { days?: 3 | 7 | 14; brands?: string } = {}): Promise<ShareResponse> {
+    const params = new URLSearchParams({ days: String(opts.days ?? 7) });
+    if (opts.brands) params.set('brands', opts.brands);
+    return apiFetch(`/projects/${encodeURIComponent(id)}/share?${params.toString()}`, { method: 'POST' }).then((d) =>
+      shareResponseSchema.parse(d),
+    );
   },
 };
 

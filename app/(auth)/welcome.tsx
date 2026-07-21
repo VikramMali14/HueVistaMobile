@@ -1,4 +1,4 @@
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, Text, Button, BrandMark } from '../../src/components';
 import { colors, spacing } from '../../src/theme';
@@ -31,6 +31,11 @@ export default function Welcome() {
           fullWidth
           onPress={() => router.push('/redeem-code')}
         />
+        <Pressable onPress={() => router.push('/browse-shades')} hitSlop={8} style={styles.browse}>
+          <Text variant="label" color={colors.accentSoft} center>
+            Browse shades without an account
+          </Text>
+        </Pressable>
         <Text variant="caption" center style={styles.legal}>
           By continuing you agree to HueVista&apos;s Terms and Privacy Policy.
         </Text>
@@ -43,5 +48,6 @@ const styles = StyleSheet.create({
   content: { flex: 1, justifyContent: 'space-between', paddingVertical: spacing.xxxl },
   hero: { flex: 1, justifyContent: 'center' },
   actions: { gap: spacing.md },
+  browse: { paddingVertical: spacing.xs },
   legal: { color: colors.fgMute, marginTop: spacing.sm },
 });

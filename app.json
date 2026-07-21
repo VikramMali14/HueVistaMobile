@@ -40,6 +40,13 @@
           "photosPermission": "HueVista needs access to your photos so you can visualize shades on a room you've already photographed.",
           "cameraPermission": "HueVista needs camera access so you can photograph a room to visualize paint shades on its walls."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "HueVista needs permission to save your visualized room to your Photos.",
+          "photosPermission": "HueVista needs access to your photos to save your visualized room."
+        }
       ]
     ]
   }

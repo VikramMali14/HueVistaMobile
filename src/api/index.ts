@@ -16,9 +16,16 @@ export {
   projectSchema,
   projectSummarySchema,
   regionSchema,
+  shareResponseSchema,
   PROJECT_STATUSES,
 } from './projectSchemas';
-export type { ImageResponse, Project, ProjectSummary, Region, ProjectStatus } from './projectSchemas';
+export type { ImageResponse, Project, ProjectSummary, Region, ProjectStatus, ShareResponse } from './projectSchemas';
+export { recommendationsApi } from './recommendations';
+export { recommendationResponseSchema } from './recommendationSchemas';
+export type { RecommendationResponse, ColorCombo, MatchedShade } from './recommendationSchemas';
+export { accessCodesApi } from './accessCodes';
+export { accessCodeResponseSchema } from './accountSchemas';
+export type { AccessCodeResponse } from './accountSchemas';
 export {
   shadeSummarySchema,
   shadeDetailSchema,

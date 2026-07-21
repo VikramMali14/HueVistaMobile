@@ -61,6 +61,14 @@ export const projectSchema = z.object({
 });
 export type Project = z.infer<typeof projectSchema>;
 
+/** ShareResponse — POST /api/projects/{id}/share. */
+export const shareResponseSchema = z.object({
+  shareUrl: z.string(),
+  shareToken: z.string().nullish(),
+  expiresAt: z.string().nullish(),
+});
+export type ShareResponse = z.infer<typeof shareResponseSchema>;
+
 /** ProjectSummaryResponse — list projection. */
 export const projectSummarySchema = z.object({
   id: z.string(),
