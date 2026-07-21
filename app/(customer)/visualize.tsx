@@ -18,23 +18,45 @@ import { Shade } from '../../src/shades/types';
  */
 export default function Visualize() {
   const { width } = useWindowDimensions();
-  const params = useLocalSearchParams<{ code?: string }>();
+  const params = useLocalSearchParams<{
+    code?: string;
+    name?: string;
+    hex?: string;
+    brand?: string;
+    brandSlug?: string;
+    family?: string;
+  }>();
   const photo = useImage(require('../../assets/spike/sample-room.png'));
   const mask = useImage(require('../../assets/spike/sample-mask.png'));
 
-  const [shade, setShade] = useState<Shade>(
-    () => SAMPLE_SHADES.find((s) => s.code === params.code) ?? SAMPLE_SHADES[5],
-  );
+  // "Try on wall" passes a full shade (hex + meta); the older sample path passes
+  // just a code. Build a Shade from whichever we got.
+  function shadeFromParams(): Shade | null {
+    if (params.code && params.hex) {
+      return {
+        code: params.code,
+        name: params.name || params.code,
+        hex: params.hex,
+        brand: params.brand || '',
+        family: params.family || '',
+        brandSlug: params.brandSlug || undefined,
+      };
+    }
+    if (params.code) return SAMPLE_SHADES.find((s) => s.code === params.code) ?? null;
+    return null;
+  }
+
+  const [shade, setShade] = useState<Shade>(() => shadeFromParams() ?? SAMPLE_SHADES[5]);
   const [comparing, setComparing] = useState(false);
 
-  // "Try on wall" from the shade library arrives as a ?code= param. Sync it by
-  // adjusting state during render (React's recommended pattern) so a new param
-  // preselects that shade while still letting the tray override it locally.
-  const [lastCode, setLastCode] = useState(params.code);
-  if (params.code && params.code !== lastCode) {
-    setLastCode(params.code);
-    const found = SAMPLE_SHADES.find((s) => s.code === params.code);
-    if (found) setShade(found);
+  // Sync when a new shade is passed via params, by adjusting state during render
+  // (React's recommended pattern), while still letting the tray override locally.
+  const paramKey = `${params.code ?? ''}:${params.hex ?? ''}`;
+  const [lastKey, setLastKey] = useState(paramKey);
+  if (params.code && paramKey !== lastKey) {
+    setLastKey(paramKey);
+    const next = shadeFromParams();
+    if (next) setShade(next);
   }
 
   const canvasWidth = Math.round(width - spacing.lg * 2);

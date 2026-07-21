@@ -3,13 +3,14 @@ import { View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useFonts } from 'expo-font';
 import * as SystemUI from 'expo-system-ui';
 
 import { colors, fontMap } from '../src/theme';
 import { SessionProvider, useSession } from '../src/auth';
 import { queryClient } from '../src/query/client';
+import { persistOptions } from '../src/query/persist';
 
 /**
  * Redirect the user to the right area whenever auth state resolves or changes:
@@ -71,12 +72,12 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <SessionProvider>
           <StatusBar style="light" />
           <RootNavigator />
         </SessionProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </SafeAreaProvider>
   );
 }

@@ -5,11 +5,21 @@ import { Screen, Text, Card, StatusPill } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
+import { usePopularShades } from '../../src/shades/queries';
+import { summaryToShade, Shade } from '../../src/shades/types';
 
 export default function Home() {
   const router = useRouter();
   const { user } = useSession();
   const firstName = user?.name?.split(' ')[0] ?? 'there';
+
+  // Live popular shades, with the local sample as a first-load / offline fallback.
+  const popularQuery = usePopularShades(10);
+  const livePopular = (popularQuery.data ?? [])
+    .map(summaryToShade)
+    .filter((s): s is Shade => s !== null);
+  const usingSample = livePopular.length === 0;
+  const popular = usingSample ? SAMPLE_SHADES.slice(0, 8) : livePopular.slice(0, 10);
 
   return (
     <Screen scroll contentStyle={styles.content}>
@@ -44,11 +54,27 @@ export default function Home() {
       <View style={styles.section}>
         <View style={styles.sectionHead}>
           <Text variant="label">Popular shades</Text>
-          <StatusPill label="Sample" tone="neutral" />
+          {usingSample ? <StatusPill label="Sample" tone="neutral" /> : null}
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-          {SAMPLE_SHADES.slice(0, 8).map((shade) => (
-            <Pressable key={shade.code} onPress={() => router.push('/visualize')} style={styles.chip}>
+          {popular.map((shade) => (
+            <Pressable
+              key={`${shade.brandSlug ?? ''}-${shade.code}`}
+              onPress={() =>
+                router.push({
+                  pathname: '/visualize',
+                  params: {
+                    code: shade.code,
+                    name: shade.name,
+                    hex: shade.hex,
+                    brand: shade.brand,
+                    brandSlug: shade.brandSlug ?? '',
+                    family: shade.family,
+                  },
+                })
+              }
+              style={styles.chip}
+            >
               <View style={[styles.swatch, { backgroundColor: shade.hex }]} />
               <Text variant="caption" numberOfLines={1} style={styles.chipLabel}>
                 {shade.name}
