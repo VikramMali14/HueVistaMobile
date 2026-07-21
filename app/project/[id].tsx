@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, StyleSheet, Pressable, ScrollView, ActivityIndicator, useWindowDimensions, Share } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
+import { captureRef } from 'react-native-view-shot';
 import { Text, Button, Card, StatusPill } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
@@ -46,7 +48,10 @@ export default function ProjectEditor() {
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [savingImg, setSavingImg] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const shotRef = useRef<View>(null);
 
   // Select the first region once segmentation lands (guarded one-time set).
   if (selectedRegionId == null && regions.length > 0) {
@@ -104,6 +109,7 @@ export default function ProjectEditor() {
   async function doShare() {
     setSharing(true);
     setActionError(null);
+    setActionMsg(null);
     try {
       const res = await projectsApi.share(id, { days: 7 });
       await Share.share({ message: `See my room in HueVista: ${res.shareUrl}`, url: res.shareUrl });
@@ -111,6 +117,26 @@ export default function ProjectEditor() {
       setActionError(err instanceof ApiError ? err.message : 'Couldn’t create a share link.');
     } finally {
       setSharing(false);
+    }
+  }
+
+  async function doSaveImage() {
+    setActionError(null);
+    setActionMsg(null);
+    try {
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (!perm.granted) {
+        setActionError('Photos permission is needed to save. You can enable it in Settings.');
+        return;
+      }
+      setSavingImg(true);
+      const uri = await captureRef(shotRef, { format: 'png', quality: 1 });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      setActionMsg('Saved to your Photos ✓');
+    } catch {
+      setActionError('Couldn’t save the image. Please try again.');
+    } finally {
+      setSavingImg(false);
     }
   }
 
@@ -151,7 +177,7 @@ export default function ProjectEditor() {
       </Text>
 
       {/* Canvas */}
-      <View style={[styles.canvasFrame, { height: canvasH }]}>
+      <View ref={shotRef} collapsable={false} style={[styles.canvasFrame, { height: canvasH }]}>
         {isLoading || !photo ? (
           <View style={styles.canvasCenter}>
             <ActivityIndicator color={colors.accent} />
@@ -209,10 +235,10 @@ export default function ProjectEditor() {
 
       {status === 'SEGMENTED' && regions.length > 0 ? (
         <>
-          {/* AI suggest + Share */}
+          {/* AI suggest · Share · Save */}
           <View style={styles.actionsRow}>
             <Button
-              label="AI suggest"
+              label="Suggest"
               variant="secondary"
               icon={<Ionicons name="sparkles" size={16} color={colors.fg} />}
               onPress={openRecommendations}
@@ -226,10 +252,22 @@ export default function ProjectEditor() {
               onPress={doShare}
               style={styles.actionBtn}
             />
+            <Button
+              label="Save"
+              variant="secondary"
+              loading={savingImg}
+              icon={<Ionicons name="download-outline" size={16} color={colors.fg} />}
+              onPress={doSaveImage}
+              style={styles.actionBtn}
+            />
           </View>
           {actionError ? (
             <Text variant="caption" color={colors.danger}>
               {actionError}
+            </Text>
+          ) : actionMsg ? (
+            <Text variant="caption" color={colors.success}>
+              {actionMsg}
             </Text>
           ) : null}
 
