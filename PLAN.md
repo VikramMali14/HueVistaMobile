@@ -234,33 +234,38 @@ recolors at 60fps is the gate for the rest of Phase 1.
 ### Phase 0 — Repository & foundations
 
 - [x] Create GitHub repo `VikramMali14/HueVistaMobile` (private) — done by owner, 2026-07-20
-- [ ] Scaffold Expo app (TypeScript template, Expo Router), commit clean baseline
-- [ ] Add theme module with §4 tokens; load Space Grotesk via expo-font
-- [ ] Build base UI kit: Button, Card, Pill, Input, SheetModal, StatTile, Meter
-- [ ] Typed API client with base URL from env + error normalization
-- [ ] Auth store: secure-store refresh token, in-memory access token, 401 auto-refresh
-- [ ] CI workflow: typecheck + eslint + unit tests on every push
-- [ ] README.md: how to run (`npx expo start`), how to point at a backend, repo map
+- [x] Scaffold Expo app (TypeScript template, Expo Router), commit clean baseline — Expo SDK 57, React 19, RN 0.86
+- [x] Add theme module with §4 tokens; load Space Grotesk via expo-font — `src/theme/`
+- [x] Build base UI kit: Button, Card, Pill, Input, SheetModal, StatTile, Meter — `src/components/` (+ Text, Screen, Chip, StatusPill)
+- [x] Typed API client with base URL from env + error normalization — `src/api/` (zod-validated, 401 single-flight refresh)
+- [x] Auth store: secure-store refresh token, in-memory access token, 401 auto-refresh — `src/auth/` (verified against backend `AuthController`)
+- [x] CI workflow: typecheck + eslint + unit tests on every push — `.github/workflows/ci.yml`
+- [x] README.md: how to run (`npx expo start`), how to point at a backend, repo map
 
 ### Phase 1 — Customer core (the product)
 
-- [ ] **Recolor engine spike** (see §6) — bundled photo + mask recolored live at interactive framerate on a real Android device. Gate for everything below.
-- [ ] Welcome screen (brand moment, three entry paths)
-- [ ] Sign in / register / forgot password against existing endpoints
-- [ ] Google sign-in (expo-auth-session against existing Google OAuth flow)
-- [ ] Access-code redeem screen (`POST /api/access-codes/redeem`) incl. linked-shop card
-- [ ] Role router: on session start, mount tab navigator for the account's role (customer first; other roles show a "coming in phase 2/3" placeholder screen)
-- [ ] Customer home: CTA, recent projects, AI picks strip
-- [ ] Camera capture + gallery pick → `POST /api/images/upload` → create project
-- [ ] Segmentation flow: trigger `POST .../segment`, poll status, handle failure + tap-to-refine (`segment/point`)
-- [ ] Visualizer editor: region chips, shade tray, before/after compare, auto-save regions (`PUT .../regions`)
-- [ ] Shade library: search + brand/family filters against `/api/shades`, offline cache
-- [ ] "Try on wall" from any shade → visualizer with shade preselected
-- [ ] AI suggest: `POST .../recommendations` surfaced in editor
-- [ ] Projects list + detail (resume editing)
-- [ ] Share: render result image, native share sheet (WhatsApp first), share link (`POST .../share`), save to gallery
-- [ ] "Send to shop for a quote" (`POST .../send-to-shop`)
-- [ ] Guest browse mode (shade library only) via `/api/guest/*`
+> **Phase 1a delivered (2026-07-21):** recolor engine + spike, full auth flow,
+> role router, and the customer tab shell. Remaining Phase 1 work (camera →
+> upload → AI segmentation → full visualizer editor → live shade catalogue →
+> share) is Phase 1b. Status per task below.
+
+- [x] **Recolor engine spike** (see §6) — Skia luminance-preserving shader (`src/engine/`) + Visualize screen recoloring a bundled sample room/mask, with shade tray and press-and-hold compare. Typechecks, lints, bundles. ⚠️ **On-device interactive-framerate validation still pending** (needs the owner's Android phone) — that final check formally closes the gate.
+- [x] Welcome screen (brand moment, three entry paths) — `app/(auth)/welcome.tsx`
+- [x] Sign in / register / forgot password against existing endpoints — wired to the verified `AuthController` (`app/(auth)/`)
+- [ ] Google sign-in (expo-auth-session against existing Google OAuth flow) — button present but disabled; needs OAuth client IDs + `POST /api/auth/oauth2/exchange` wiring
+- [ ] Access-code redeem screen (`POST /api/access-codes/redeem`) incl. linked-shop card — **partial:** `app/(auth)/redeem-code.tsx` UI scaffolded; submit not yet wired
+- [x] Role router: on session start, mount tab navigator for the account's role (customer first; other roles show a "coming in phase 2/3" placeholder screen) — auth gate in `app/_layout.tsx` + `app/coming-soon.tsx`
+- [x] Customer home: CTA, recent projects, AI picks strip — `app/(customer)/home.tsx` (CTA + **live popular shades strip**; recent projects + AI picks are empty-state placeholders until the project/recommendation APIs are wired)
+- [x] Camera capture + gallery pick → `POST /api/images/upload` → create project — `app/new-project.tsx` via expo-image-picker (OS camera + gallery); handles the 422 "not a room" + 400 size/type rejections. (Custom full-screen camera with a wall-detection overlay is later polish.)
+- [x] Segmentation flow: trigger `POST .../segment`, poll status, handle failure — editor triggers AUTO segmentation, polls `GET /status` every 2 s while `SEGMENTING`, surfaces `FAILED` + reason with retry, and 402 no-credits. (Tap-to-refine `segment/point` + manual wall marking still to come.)
+- [x] Visualizer editor: region chips, shade tray, auto-save regions (`PUT .../regions`) — `app/project/[id].tsx`: region chips, live shade tray, **multi-region composite recolor of the real masks** (Skia overlay shader + auth-fetched mask PNGs), per-swatch autosave. ⚠️ **Real-mask recolor + segmentation need a running backend + device to validate** (not exercisable in CI). Before/after compare currently lives in the engine spike.
+- [x] Shade library: search + brand/family filters against `/api/shades`, offline cache — **live** (`app/(customer)/shades.tsx`): server-side search + brand + family filters, infinite scroll via `/api/shades/paged`, shade detail sheet via `/{brand}/{code}` (AI-enriched), and React Query offline persistence of the catalogue (`src/query/persist.ts`). Contract verified against `ShadeController`.
+- [x] "Try on wall" from any shade → visualizer with shade preselected — via route param (sample shades); carries over to the live catalogue
+- [ ] AI suggest: `POST .../recommendations` surfaced in editor — Phase 1b
+- [x] Projects list + detail (resume editing) — live list (`app/(customer)/projects.tsx`, `GET /api/projects` with authed thumbnails) + the editor as detail (persisted region colours reload). Contract verified against `ProjectController`.
+- [ ] Share: render result image, native share sheet (WhatsApp first), share link (`POST .../share`), save to gallery — Phase 1b
+- [ ] "Send to shop for a quote" (`POST .../send-to-shop`) — Phase 1b
+- [ ] Guest browse mode (shade library only) via `/api/guest/*` — Phase 1b
 
 ### Phase 2 — Retailer counter mode (the subscriber)
 
@@ -334,3 +339,7 @@ recolors at 60fps is the gate for the rest of Phase 1.
 |---|---|---|
 | 2026-07-20 | — | Plan + visual design created. |
 | 2026-07-20 | Phase 0 | Repo created (empty) by owner. Plan + design.html moved into this repo (previously in `HueVista/docs/mobile-app/`, now removed there). Next action: scaffold the Expo app. |
+| 2026-07-21 | Phase 0 | **Phase 0 complete.** Scaffolded Expo SDK 57 (React 19, RN 0.86) + Expo Router. Added Midnight Spectrum theme + Space Grotesk fonts, UI kit (Button/Card/Pill/Input/SheetModal/StatTile/Meter/Text/Screen), typed API client (env base URL, error normalization, 401 single-flight refresh), zod schemas + auth API verified against backend `AuthController`/`AuthResponse`, secure session store (Keychain/Keystore) with launch restore. CI (typecheck+lint+test), README, `.env.example`. Verified: `tsc` clean, eslint clean, 16 unit tests pass, `expo export` bundles (1386 modules). Next: Phase 1 — recolor-engine spike, then Welcome/auth screens + customer core. |
+| 2026-07-21 | Phase 1b | **Phase 1b-2 delivered — camera → project → segmentation → editor.** Verified `ImageController` + `ProjectController`; built typed `images.ts`/`projects.ts` + zod schemas + tests. New-project capture flow (`app/new-project.tsx`, expo-image-picker camera+gallery → upload → create → editor; 422/400 handled). Live Projects list with authed thumbnails. Project editor (`app/project/[id].tsx`): triggers AUTO segmentation, polls status while SEGMENTING, handles FAILED/402, region chips + live shade tray + **multi-region composite recolor of real masks** (new Skia overlay shader + auth-fetched mask/photo loader) + per-swatch autosave (`PUT /regions`). Home CTA now starts the real camera flow. Verified: `tsc` clean, eslint clean, 37 unit tests pass, `expo export` bundles (5.4 MB). ⚠️ The camera/upload/segmentation/real-mask recolor path is wired to the verified contract but needs a running backend + device to exercise end-to-end. **Next (Phase 1b-3):** AI suggest, share + save-to-gallery, send-to-shop, guest browse, tap-to-refine/manual walls. |
+| 2026-07-21 | Phase 1b | **Phase 1b-1 delivered — live shade catalogue.** Verified the `ShadeController` contract and built the typed shades client + zod schemas (`src/api/shades.ts`, `shadeSchemas.ts`): brands, paged list, families, detail, colour-match. New live Shades tab (`app/(customer)/shades.tsx`): server-side search + brand + family filters, infinite scroll, shade detail sheet with AI-enriched prose + "Try on wall". Offline catalogue cache via React Query persistence to AsyncStorage (`src/query/persist.ts`, shade queries only). Home popular-shades strip + visualizer "Try on wall" now use the live catalogue (sample set kept as offline/first-load fallback). Verified: `tsc` clean, eslint clean, 31 unit tests pass, `expo export` bundles (5.3 MB). **Next (Phase 1b-2):** camera → `POST /api/images/upload` → project create → segmentation polling → real-mask visualizer editor → share/send-to-shop → guest browse. |
+| 2026-07-21 | Phase 1a | **Phase 1a delivered.** Recolor engine: Skia luminance-preserving SkSL shader + `RecolorCanvas` (`src/engine/`) with unit-tested colour math; bundled sample room/mask (procedurally generated). Visualize spike screen recolors the wall live with a shade tray + press-and-hold compare. Full auth flow (Welcome / Sign in / Register / Forgot password) against the verified backend. Role router + auth gate (`app/_layout.tsx`) routes CUSTOMER → tabs, other roles → coming-soon. Customer tab shell: Home (CTA), Shades (local sample: search + brand filter + Try-on-wall), Projects (empty state), Account (profile + sign-out). Verified: `tsc` clean, eslint clean, 22 unit tests pass, `expo export` bundles (5.2 MB Hermes). **Pending:** on-device framerate check for the engine (owner's phone); Google OAuth; and Phase 1b — camera → upload → AI segmentation → full visualizer editor → live `/api/shades` → share/send-to-shop → guest browse. |
