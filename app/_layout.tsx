@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -8,14 +8,54 @@ import { useFonts } from 'expo-font';
 import * as SystemUI from 'expo-system-ui';
 
 import { colors, fontMap } from '../src/theme';
-import { SessionProvider } from '../src/auth';
+import { SessionProvider, useSession } from '../src/auth';
 import { queryClient } from '../src/query/client';
 
 /**
- * Root layout. Loads fonts, sets the dark system background, and wraps the whole
- * app in the query, session and safe-area providers. The role-based tab
- * navigators (customer / retailer / painter / distributor) mount under the auth
- * gate in Phase 1 — for now a single index route renders.
+ * Redirect the user to the right area whenever auth state resolves or changes:
+ *   unauthenticated              → /welcome (unless already in the auth group)
+ *   authenticated + CUSTOMER     → /home    (the customer tabs)
+ *   authenticated + other role   → /coming-soon (retailer/painter/distributor land in Phase 2/3)
+ * Once inside their area the user navigates freely; this only fires on the
+ * boundary (auth group or the initial index route), so there are no loops.
+ */
+function useAuthGate() {
+  const { status, role } = useSession();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === 'loading') return;
+    const root = segments[0];
+    const inAuthGroup = root === '(auth)';
+
+    if (status === 'unauthenticated') {
+      if (!inAuthGroup) router.replace('/welcome');
+      return;
+    }
+    // authenticated
+    if (inAuthGroup || root === undefined) {
+      router.replace(role === 'CUSTOMER' ? '/home' : '/coming-soon');
+    }
+  }, [status, role, segments, router]);
+}
+
+function RootNavigator() {
+  useAuthGate();
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.bg },
+        animation: 'fade',
+      }}
+    />
+  );
+}
+
+/**
+ * Root layout. Loads fonts, sets the dark system background, and wraps the app
+ * in the query, session and safe-area providers.
  */
 export default function RootLayout() {
   const [fontsLoaded] = useFonts(fontMap);
@@ -34,13 +74,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
           <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.bg },
-              animation: 'fade',
-            }}
-          />
+          <RootNavigator />
         </SessionProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

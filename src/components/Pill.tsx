@@ -1,4 +1,4 @@
-import { StyleSheet, View, ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, ViewStyle } from 'react-native';
 import { colors, radius, spacing } from '../theme';
 import { Text } from './Text';
 
@@ -54,20 +54,21 @@ export interface ChipProps {
 /** Fully-rounded selectable chip (brand/family/region filters). */
 export function Chip({ label, selected, onPress, style }: ChipProps) {
   return (
-    <View
-      onTouchEnd={onPress}
-      style={[
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.chip,
         selected
           ? { backgroundColor: colors.accentGhost, borderColor: colors.accent }
           : { backgroundColor: colors.surface, borderColor: colors.rule },
+        pressed && { opacity: 0.85 },
         style,
       ]}
     >
       <Text variant="label" color={selected ? colors.accentSoft : colors.fgSoft}>
         {label}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 

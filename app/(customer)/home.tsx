@@ -1,0 +1,83 @@
+import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Screen, Text, Card, StatusPill } from '../../src/components';
+import { colors, spacing, radius } from '../../src/theme';
+import { useSession } from '../../src/auth';
+import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
+
+export default function Home() {
+  const router = useRouter();
+  const { user } = useSession();
+  const firstName = user?.name?.split(' ')[0] ?? 'there';
+
+  return (
+    <Screen scroll contentStyle={styles.content}>
+      <View style={styles.greeting}>
+        <Text variant="bodySoft">Hi {firstName} 👋</Text>
+        <Text variant="title">What are we painting today?</Text>
+      </View>
+
+      {/* Primary CTA — the core loop starts here. */}
+      <Pressable onPress={() => router.push('/visualize')} style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}>
+        <Card style={styles.cta}>
+          <View style={styles.ctaIcon}>
+            <Ionicons name="sparkles" size={22} color={colors.accentSoft} />
+          </View>
+          <View style={styles.ctaText}>
+            <Text variant="heading">Visualize a room</Text>
+            <Text variant="bodySoft">Take a photo and try real shades on your walls.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.fgMute} />
+        </Card>
+      </Pressable>
+
+      {/* Recent projects — empty until the project API is wired. */}
+      <View style={styles.section}>
+        <Text variant="label">Recent projects</Text>
+        <Card>
+          <Text variant="bodySoft">Your saved rooms will show up here once you create one.</Text>
+        </Card>
+      </View>
+
+      {/* Popular shades strip — taps into the visualizer. */}
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text variant="label">Popular shades</Text>
+          <StatusPill label="Sample" tone="neutral" />
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
+          {SAMPLE_SHADES.slice(0, 8).map((shade) => (
+            <Pressable key={shade.code} onPress={() => router.push('/visualize')} style={styles.chip}>
+              <View style={[styles.swatch, { backgroundColor: shade.hex }]} />
+              <Text variant="caption" numberOfLines={1} style={styles.chipLabel}>
+                {shade.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { gap: spacing.xl, paddingTop: spacing.xl },
+  greeting: { gap: spacing.xs },
+  cta: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  ctaIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.button,
+    backgroundColor: colors.accentGhost,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaText: { flex: 1, gap: 2 },
+  section: { gap: spacing.sm },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  strip: { gap: spacing.md, paddingVertical: spacing.xs },
+  chip: { width: 84, gap: spacing.xs },
+  swatch: { width: 84, height: 60, borderRadius: radius.card, borderWidth: 1, borderColor: colors.rule },
+  chipLabel: { textAlign: 'center' },
+});
