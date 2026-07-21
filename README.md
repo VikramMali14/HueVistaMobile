@@ -16,35 +16,61 @@ the full phase plan and live progress.
 
 ## Run it
 
+> **Expo Go will not work.** This app depends on `@shopify/react-native-skia`
+> (the recolor engine), a native module Expo Go doesn't ship. You need a
+> **development build** — a small custom app that includes the native modules —
+> which you then load JS into. It's a one-time build; after that you just run the
+> dev server.
+
+### Prerequisites
+
+- **Node 20+** (`node -v`)
+- **Android:** [Android Studio](https://developer.android.com/studio) (for the SDK
+  + an emulator) **or** a physical Android phone with USB debugging on.
+- **iOS (optional):** a **Mac with Xcode**.
+- A running **HueVista backend** (see its repo's `docker-compose`) or a deployed URL.
+
+### 1. Install
+
 ```bash
 npm install
-npm start           # then press "a" for Android, "i" for iOS, or scan the QR in Expo Go
 ```
 
-Other scripts:
-
-| Command | What it does |
-|---|---|
-| `npm start` | Start the Expo dev server |
-| `npm run android` / `npm run ios` | Launch on an emulator/simulator |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint (Expo config) |
-| `npm test` | Jest unit tests |
-
-### Point it at a backend
-
-The API origin is read from `EXPO_PUBLIC_API_ORIGIN`. Copy `.env.example` to
-`.env` and set it:
+### 2. Point it at a backend
 
 ```bash
 cp .env.example .env
-# .env
+# edit .env:
 EXPO_PUBLIC_API_ORIGIN=http://localhost:8080
 ```
 
-> On a **physical device**, `localhost` is the phone, not your computer. Use your
-> machine's LAN IP instead, e.g. `http://192.168.1.20:8080`. The backend's
-> Swagger UI is at `<origin>/swagger-ui.html`.
+> On a **physical device**, `localhost` is the phone, not your computer — use your
+> machine's LAN IP, e.g. `http://192.168.1.20:8080`. Swagger is at `<origin>/swagger-ui.html`.
+
+### 3. Build & run (development build)
+
+```bash
+# Android — emulator running, or phone plugged in:
+npx expo run:android
+
+# iOS — Mac + Xcode only:
+npx expo run:ios
+```
+
+The first run compiles the native app (a few minutes) and installs it. **After
+that**, just start the dev server and open the installed dev build:
+
+```bash
+npx expo start --dev-client
+```
+
+### No device handy? These run anywhere
+
+| Command | What it does |
+|---|---|
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint (Expo config) |
+| `npm test` | Jest unit tests |
 
 ## Repo map
 
