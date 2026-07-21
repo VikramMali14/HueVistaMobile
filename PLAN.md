@@ -234,13 +234,13 @@ recolors at 60fps is the gate for the rest of Phase 1.
 ### Phase 0 — Repository & foundations
 
 - [x] Create GitHub repo `VikramMali14/HueVistaMobile` (private) — done by owner, 2026-07-20
-- [ ] Scaffold Expo app (TypeScript template, Expo Router), commit clean baseline
-- [ ] Add theme module with §4 tokens; load Space Grotesk via expo-font
-- [ ] Build base UI kit: Button, Card, Pill, Input, SheetModal, StatTile, Meter
-- [ ] Typed API client with base URL from env + error normalization
-- [ ] Auth store: secure-store refresh token, in-memory access token, 401 auto-refresh
-- [ ] CI workflow: typecheck + eslint + unit tests on every push
-- [ ] README.md: how to run (`npx expo start`), how to point at a backend, repo map
+- [x] Scaffold Expo app (TypeScript template, Expo Router), commit clean baseline — Expo SDK 57, React 19, RN 0.86
+- [x] Add theme module with §4 tokens; load Space Grotesk via expo-font — `src/theme/`
+- [x] Build base UI kit: Button, Card, Pill, Input, SheetModal, StatTile, Meter — `src/components/` (+ Text, Screen, Chip, StatusPill)
+- [x] Typed API client with base URL from env + error normalization — `src/api/` (zod-validated, 401 single-flight refresh)
+- [x] Auth store: secure-store refresh token, in-memory access token, 401 auto-refresh — `src/auth/` (verified against backend `AuthController`)
+- [x] CI workflow: typecheck + eslint + unit tests on every push — `.github/workflows/ci.yml`
+- [x] README.md: how to run (`npx expo start`), how to point at a backend, repo map
 
 ### Phase 1 — Customer core (the product)
 
@@ -334,3 +334,4 @@ recolors at 60fps is the gate for the rest of Phase 1.
 |---|---|---|
 | 2026-07-20 | — | Plan + visual design created. |
 | 2026-07-20 | Phase 0 | Repo created (empty) by owner. Plan + design.html moved into this repo (previously in `HueVista/docs/mobile-app/`, now removed there). Next action: scaffold the Expo app. |
+| 2026-07-21 | Phase 0 | **Phase 0 complete.** Scaffolded Expo SDK 57 (React 19, RN 0.86) + Expo Router. Added Midnight Spectrum theme + Space Grotesk fonts, UI kit (Button/Card/Pill/Input/SheetModal/StatTile/Meter/Text/Screen), typed API client (env base URL, error normalization, 401 single-flight refresh), zod schemas + auth API verified against backend `AuthController`/`AuthResponse`, secure session store (Keychain/Keystore) with launch restore. CI (typecheck+lint+test), README, `.env.example`. Verified: `tsc` clean, eslint clean, 16 unit tests pass, `expo export` bundles (1386 modules). Next: Phase 1 — recolor-engine spike, then Welcome/auth screens + customer core. |

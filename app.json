@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "HueVista",
+    "slug": "huevista-mobile",
+    "version": "0.1.0",
+    "scheme": "huevista",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a090f",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a090f"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gridstore.huevista"
+    },
+    "android": {
+      "package": "com.gridstore.huevista",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a090f",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-router", "expo-font", "expo-secure-store"]
+  }
+}
