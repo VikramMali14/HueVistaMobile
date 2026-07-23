@@ -27,6 +27,12 @@ the full phase plan and live progress.
 - **Node 20+** (`node -v`)
 - **Android:** [Android Studio](https://developer.android.com/studio) (for the SDK
   + an emulator) **or** a physical Android phone with USB debugging on.
+  - **Point the build at your SDK.** Set an `ANDROID_HOME` environment variable to
+    your SDK location (find it in Android Studio → **Settings → Languages &
+    Frameworks → Android SDK**; the default is `%LOCALAPPDATA%\Android\Sdk` on
+    Windows, `~/Library/Android/sdk` on macOS, `~/Android/Sdk` on Linux). Without
+    this the Android build fails with **"SDK location not found"** — see
+    [Troubleshooting](#troubleshooting).
 - **iOS (optional):** a **Mac with Xcode**.
 - A running **HueVista backend** (see its repo's `docker-compose`) or a deployed URL.
 
@@ -71,6 +77,42 @@ npx expo start --dev-client
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint (Expo config) |
 | `npm test` | Jest unit tests |
+
+## Troubleshooting
+
+### `SDK location not found` on `npx expo run:android`
+
+```
+> SDK location not found. Define a valid SDK location with an ANDROID_HOME
+  environment variable or by setting the sdk.dir path in your project's
+  local.properties file at '.../android/local.properties'.
+```
+
+`expo run:android` generates the native `android/` folder (it's gitignored), then
+hands off to Gradle — and Gradle can't find your Android SDK. Fix it with **one** of:
+
+- **Set `ANDROID_HOME`** (recommended — survives a clean `expo prebuild`). Find your
+  SDK path in Android Studio → **Settings → Languages & Frameworks → Android SDK**,
+  then set the variable and **restart your terminal / Android Studio** so it's picked up:
+
+  - **Windows (PowerShell), permanent:**
+    ```powershell
+    [System.Environment]::SetEnvironmentVariable('ANDROID_HOME', "$env:LOCALAPPDATA\Android\Sdk", 'User')
+    ```
+  - **macOS / Linux** (add to `~/.zshrc` or `~/.bashrc`):
+    ```bash
+    export ANDROID_HOME="$HOME/Library/Android/sdk"   # macOS
+    export ANDROID_HOME="$HOME/Android/Sdk"           # Linux
+    ```
+
+- **Or create `android/local.properties`** (quick, but the `android/` folder is
+  regenerated, so you may have to redo it). Use forward slashes to avoid escaping:
+  ```properties
+  sdk.dir=C:/Users/YOUR_NAME/AppData/Local/Android/Sdk
+  ```
+
+If the SDK isn't installed at all, install it from that same Android Studio screen
+(SDK Platform + SDK Build-Tools + Android SDK Platform-Tools).
 
 ## Repo map
 
