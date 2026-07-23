@@ -143,11 +143,26 @@ Android Studio, then clean and rebuild.
   export JAVA_HOME="$(/usr/libexec/java_home -v 17)"   # macOS
   ```
 
-Then **open a new terminal** (so `JAVA_HOME` reloads) and rebuild from a clean state
-— the previous run cached artifacts under the wrong JDK:
+Setting `JAVA_HOME` persistently is not enough on its own — a **stale Gradle daemon**
+keeps running on the old JDK and gets reused, and a persisted variable only reaches a
+brand-new process. So force it for the current shell, stop the daemon, and **verify the
+JVM before the long build** (`gradlew clean` is not a valid check — `clean` doesn't run
+the JDK-image transform, so it passes even on the wrong JDK):
+
+```powershell
+# Windows PowerShell — set JAVA_HOME for THIS shell immediately (no restart needed)
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+cd android
+.\gradlew.bat --stop        # kill daemons still on the old JDK
+.\gradlew.bat -version      # the "JVM:" line MUST read 17 or 21, not 24/25/26
+cd ..
+npx expo run:android
+```
 
 ```bash
-cd android && ./gradlew clean && cd ..   # Windows: .\gradlew.bat clean
+# macOS / Linux equivalent
+export JAVA_HOME="$(/usr/libexec/java_home -v 17)"   # macOS
+cd android && ./gradlew --stop && ./gradlew -version && cd ..
 npx expo run:android
 ```
 
