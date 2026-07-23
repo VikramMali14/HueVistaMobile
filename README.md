@@ -25,6 +25,11 @@ the full phase plan and live progress.
 ### Prerequisites
 
 - **Node 20+** (`node -v`)
+- **JDK 17** (JDK 21 also works — **not** 24/25/26). The Android build uses your
+  `JAVA_HOME` JDK; a too-new JDK fails with `jlink.exe` / `JdkImageTransform`
+  errors — see [Troubleshooting](#troubleshooting). The simplest reliable option
+  is the JDK **bundled with Android Studio** (`C:\Program Files\Android\Android
+  Studio\jbr` on Windows) — point `JAVA_HOME` at it.
 - **Android:** [Android Studio](https://developer.android.com/studio) (for the SDK
   + an emulator) **or** a physical Android phone with USB debugging on.
   - **Point the build at your SDK.** Set an `ANDROID_HOME` environment variable to
@@ -113,6 +118,38 @@ hands off to Gradle — and Gradle can't find your Android SDK. Fix it with **on
 
 If the SDK isn't installed at all, install it from that same Android Studio screen
 (SDK Platform + SDK Build-Tools + Android SDK Platform-Tools).
+
+### `jlink.exe` / `JdkImageTransform` failure, or "A restricted method in java.lang.System has been called"
+
+```
+> Execution failed for JdkImageTransform: .../android-36/core-for-system-modules.jar.
+   > Error while executing process .../jdk-26.0.1/bin/jlink.exe ...
+```
+
+Your `JAVA_HOME` points at a **too-new JDK** (24, 25, 26…). The Android Gradle
+Plugin's JDK-image transform and native (CMake) tasks don't support those yet. Use
+**JDK 17** (21 also works). Easiest: point `JAVA_HOME` at the JDK bundled with
+Android Studio, then clean and rebuild.
+
+- **Windows (PowerShell), permanent:**
+  ```powershell
+  # confirm the bundled JDK is 17 or 21 first
+  & "C:\Program Files\Android\Android Studio\jbr\bin\java.exe" -version
+  [System.Environment]::SetEnvironmentVariable('JAVA_HOME', 'C:\Program Files\Android\Android Studio\jbr', 'User')
+  ```
+- **macOS / Linux** (add to `~/.zshrc` or `~/.bashrc`), or install
+  [Temurin 17](https://adoptium.net/temurin/releases/?version=17):
+  ```bash
+  export JAVA_HOME="$(/usr/libexec/java_home -v 17)"   # macOS
+  ```
+
+Then **open a new terminal** (so `JAVA_HOME` reloads) and rebuild from a clean state
+— the previous run cached artifacts under the wrong JDK:
+
+```bash
+cd android && ./gradlew clean && cd ..   # Windows: .\gradlew.bat clean
+npx expo run:android
+```
 
 ## Repo map
 
