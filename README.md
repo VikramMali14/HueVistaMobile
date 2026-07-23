@@ -166,6 +166,37 @@ cd android && ./gradlew --stop && ./gradlew -version && cd ..
 npx expo run:android
 ```
 
+### `ninja: error: ... Filename longer than 260 characters` (Windows only)
+
+```
+> Task :app:buildCMakeDebug[x86_64] FAILED
+  ninja: error: Stat(...RNGestureHandlerDetectorShadowNode.cpp.o): Filename longer than 260 characters
+```
+
+The native C++ codegen (e.g. `react-native-gesture-handler`) produces object-file
+paths ~390 characters long — CMake nests an *encoded copy of the full source path*
+under an already-deep build directory. That blows past Windows' legacy 260-char
+`MAX_PATH` limit, so `ninja` refuses. **Moving the project to a shorter folder does
+not fix this** — the doubled path stays over 260 even at the drive root. Turn off the
+limit instead:
+
+1. In an **Administrator** PowerShell:
+   ```powershell
+   Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -Value 1 -Type DWord
+   git config --system core.longpaths true
+   ```
+2. **Reboot** so every tool picks up the setting (it's read at process start).
+3. Rebuild (re-assert `JAVA_HOME`, stop the daemon, run):
+   ```powershell
+   $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+   cd android; .\gradlew.bat --stop; cd ..
+   npx expo run:android
+   ```
+
+If it still errors after a reboot, enable **Computer Configuration → Administrative
+Templates → System → Filesystem → "Enable Win32 long paths"** in Group Policy
+(`gpedit.msc`), then reboot again.
+
 ## Repo map
 
 ```
