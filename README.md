@@ -40,12 +40,47 @@ npm install
 
 ```bash
 cp .env.example .env
-# edit .env:
+```
+
+**Deployed backend (simplest — works on any device, anywhere):**
+
+```bash
+EXPO_PUBLIC_API_ORIGIN=https://api.huevista.org
+```
+
+**Local backend:**
+
+```bash
 EXPO_PUBLIC_API_ORIGIN=http://localhost:8080
 ```
 
 > On a **physical device**, `localhost` is the phone, not your computer — use your
 > machine's LAN IP, e.g. `http://192.168.1.20:8080`. Swagger is at `<origin>/swagger-ui.html`.
+
+Give the origin with **no trailing slash and no `/api` suffix** — the client appends
+`/api` itself ([`src/api/config.ts`](src/api/config.ts)).
+
+> `EXPO_PUBLIC_*` vars are inlined into the JS bundle at **build time**. Changing
+> `.env` and reloading Metro will not pick it up — restart with
+> `npx expo start --clear`, or rebuild if the old value persists.
+
+#### How the deployed backend is reachable
+
+The EC2 host publishes **only ports 80/443**, both owned by Caddy; the backend's
+`8080` and the frontend's `3000` are container-internal and not bound to the host.
+Caddy terminates TLS and routes by hostname:
+
+| Public origin | Proxies to |
+|---|---|
+| `https://api.huevista.org` | `backend:8080` |
+| `https://app.huevista.org` | `frontend:3000` |
+
+So `http://<ec2-ip>:8080` will never connect — always go through `api.huevista.org`.
+Health check: `curl -i https://api.huevista.org/actuator/health`.
+
+CORS is not a factor here: React Native's `fetch` is not a browser, so it neither
+sends `Origin` nor enforces the response. The backend's `CORS_ALLOWED_ORIGINS`
+only needs to list the **web** frontend (`https://app.huevista.org`).
 
 ### 3. Build & run (development build)
 
