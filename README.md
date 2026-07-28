@@ -25,8 +25,19 @@ the full phase plan and live progress.
 ### Prerequisites
 
 - **Node 20+** (`node -v`)
+- **JDK 17** (JDK 21 also works — **not** 24/25/26). The Android build uses your
+  `JAVA_HOME` JDK; a too-new JDK fails with `jlink.exe` / `JdkImageTransform`
+  errors — see [Troubleshooting](#troubleshooting). The simplest reliable option
+  is the JDK **bundled with Android Studio** (`C:\Program Files\Android\Android
+  Studio\jbr` on Windows) — point `JAVA_HOME` at it.
 - **Android:** [Android Studio](https://developer.android.com/studio) (for the SDK
   + an emulator) **or** a physical Android phone with USB debugging on.
+  - **Point the build at your SDK.** Set an `ANDROID_HOME` environment variable to
+    your SDK location (find it in Android Studio → **Settings → Languages &
+    Frameworks → Android SDK**; the default is `%LOCALAPPDATA%\Android\Sdk` on
+    Windows, `~/Library/Android/sdk` on macOS, `~/Android/Sdk` on Linux). Without
+    this the Android build fails with **"SDK location not found"** — see
+    [Troubleshooting](#troubleshooting).
 - **iOS (optional):** a **Mac with Xcode**.
 - A running **HueVista backend** (see its repo's `docker-compose`) or a deployed URL.
 
@@ -71,6 +82,120 @@ npx expo start --dev-client
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint (Expo config) |
 | `npm test` | Jest unit tests |
+
+## Troubleshooting
+
+### `SDK location not found` on `npx expo run:android`
+
+```
+> SDK location not found. Define a valid SDK location with an ANDROID_HOME
+  environment variable or by setting the sdk.dir path in your project's
+  local.properties file at '.../android/local.properties'.
+```
+
+`expo run:android` generates the native `android/` folder (it's gitignored), then
+hands off to Gradle — and Gradle can't find your Android SDK. Fix it with **one** of:
+
+- **Set `ANDROID_HOME`** (recommended — survives a clean `expo prebuild`). Find your
+  SDK path in Android Studio → **Settings → Languages & Frameworks → Android SDK**,
+  then set the variable and **restart your terminal / Android Studio** so it's picked up:
+
+  - **Windows (PowerShell), permanent:**
+    ```powershell
+    [System.Environment]::SetEnvironmentVariable('ANDROID_HOME', "$env:LOCALAPPDATA\Android\Sdk", 'User')
+    ```
+  - **macOS / Linux** (add to `~/.zshrc` or `~/.bashrc`):
+    ```bash
+    export ANDROID_HOME="$HOME/Library/Android/sdk"   # macOS
+    export ANDROID_HOME="$HOME/Android/Sdk"           # Linux
+    ```
+
+- **Or create `android/local.properties`** (quick, but the `android/` folder is
+  regenerated, so you may have to redo it). Use forward slashes to avoid escaping:
+  ```properties
+  sdk.dir=C:/Users/YOUR_NAME/AppData/Local/Android/Sdk
+  ```
+
+If the SDK isn't installed at all, install it from that same Android Studio screen
+(SDK Platform + SDK Build-Tools + Android SDK Platform-Tools).
+
+### `jlink.exe` / `JdkImageTransform` failure, or "A restricted method in java.lang.System has been called"
+
+```
+> Execution failed for JdkImageTransform: .../android-36/core-for-system-modules.jar.
+   > Error while executing process .../jdk-26.0.1/bin/jlink.exe ...
+```
+
+Your `JAVA_HOME` points at a **too-new JDK** (24, 25, 26…). The Android Gradle
+Plugin's JDK-image transform and native (CMake) tasks don't support those yet. Use
+**JDK 17** (21 also works). Easiest: point `JAVA_HOME` at the JDK bundled with
+Android Studio, then clean and rebuild.
+
+- **Windows (PowerShell), permanent:**
+  ```powershell
+  # confirm the bundled JDK is 17 or 21 first
+  & "C:\Program Files\Android\Android Studio\jbr\bin\java.exe" -version
+  [System.Environment]::SetEnvironmentVariable('JAVA_HOME', 'C:\Program Files\Android\Android Studio\jbr', 'User')
+  ```
+- **macOS / Linux** (add to `~/.zshrc` or `~/.bashrc`), or install
+  [Temurin 17](https://adoptium.net/temurin/releases/?version=17):
+  ```bash
+  export JAVA_HOME="$(/usr/libexec/java_home -v 17)"   # macOS
+  ```
+
+Setting `JAVA_HOME` persistently is not enough on its own — a **stale Gradle daemon**
+keeps running on the old JDK and gets reused, and a persisted variable only reaches a
+brand-new process. So force it for the current shell, stop the daemon, and **verify the
+JVM before the long build** (`gradlew clean` is not a valid check — `clean` doesn't run
+the JDK-image transform, so it passes even on the wrong JDK):
+
+```powershell
+# Windows PowerShell — set JAVA_HOME for THIS shell immediately (no restart needed)
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+cd android
+.\gradlew.bat --stop        # kill daemons still on the old JDK
+.\gradlew.bat -version      # the "JVM:" line MUST read 17 or 21, not 24/25/26
+cd ..
+npx expo run:android
+```
+
+```bash
+# macOS / Linux equivalent
+export JAVA_HOME="$(/usr/libexec/java_home -v 17)"   # macOS
+cd android && ./gradlew --stop && ./gradlew -version && cd ..
+npx expo run:android
+```
+
+### `ninja: error: ... Filename longer than 260 characters` (Windows only)
+
+```
+> Task :app:buildCMakeDebug[x86_64] FAILED
+  ninja: error: Stat(...RNGestureHandlerDetectorShadowNode.cpp.o): Filename longer than 260 characters
+```
+
+The native C++ codegen (e.g. `react-native-gesture-handler`) produces object-file
+paths ~390 characters long — CMake nests an *encoded copy of the full source path*
+under an already-deep build directory. That blows past Windows' legacy 260-char
+`MAX_PATH` limit, so `ninja` refuses. **Moving the project to a shorter folder does
+not fix this** — the doubled path stays over 260 even at the drive root. Turn off the
+limit instead:
+
+1. In an **Administrator** PowerShell:
+   ```powershell
+   Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -Value 1 -Type DWord
+   git config --system core.longpaths true
+   ```
+2. **Reboot** so every tool picks up the setting (it's read at process start).
+3. Rebuild (re-assert `JAVA_HOME`, stop the daemon, run):
+   ```powershell
+   $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+   cd android; .\gradlew.bat --stop; cd ..
+   npx expo run:android
+   ```
+
+If it still errors after a reboot, enable **Computer Configuration → Administrative
+Templates → System → Filesystem → "Enable Win32 long paths"** in Group Policy
+(`gpedit.msc`), then reboot again.
 
 ## Repo map
 
