@@ -3,6 +3,8 @@ import { SheetModal, Text, Button, StatusPill } from '../components';
 import { colors, spacing, radius } from '../theme';
 import { useShadeDetail } from './queries';
 import { ShadeSummary } from '../api';
+import { shadeDisplay } from './shadeCodes';
+import { useShadeCodeScheme } from '../account/queries';
 
 interface Props {
   /** The tapped summary, or null when the sheet is closed. */
@@ -17,8 +19,16 @@ interface Props {
 export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try on wall' }: Props) {
   // Enabled only when we have a brand slug + code; disabled (and null) when closed.
   const { data: detail, isLoading } = useShadeDetail(shade?.brandSlug ?? undefined, shade?.shadeCode);
+  const scheme = useShadeCodeScheme().data;
 
   const hex = detail?.hexCode ?? shade?.hexCode ?? undefined;
+  // Presented the way the shop presents colours: its code pattern, and the paint
+  // name only when the shop shows names.
+  const display = shadeDisplay(scheme, {
+    code: shade?.shadeCode ?? '',
+    name: detail?.name ?? shade?.name,
+  });
+  const brandName = display.name ? (detail?.brandName ?? shade?.brandName) : null;
   const tags = [detail?.shadeFamily, detail?.colorTemperature, detail?.tonality, detail?.featureTag].filter(
     Boolean,
   ) as string[];
@@ -31,11 +41,11 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try 
             <View style={[styles.swatch, { backgroundColor: hex ?? colors.surface }]} />
             <View style={styles.headMeta}>
               <Text variant="title" numberOfLines={2}>
-                {detail?.name ?? shade.name ?? shade.shadeCode}
+                {display.label}
               </Text>
               <Text variant="mono" color={colors.fgSoft}>
-                {(detail?.brandName ?? shade.brandName) ? `${detail?.brandName ?? shade.brandName} · ` : ''}
-                {shade.shadeCode}
+                {brandName ? `${brandName} · ` : ''}
+                {display.code}
                 {hex ? ` · ${hex.toUpperCase()}` : ''}
               </Text>
             </View>

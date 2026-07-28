@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen, Text, Card, Button, StatusPill, Input, SheetModal } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { API_ORIGIN, accessCodesApi, ApiError, AccessCodeResponse } from '../../src/api';
+import { EntitlementCard } from '../../src/account';
+import { useAssignedProducts, useShadeCodeScheme } from '../../src/account/queries';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -20,7 +24,13 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function Account() {
   const { user, role, signOut } = useSession();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+
+  const assigned = useAssignedProducts();
+  const scheme = useShadeCodeScheme().data;
+  const shopName = assigned.data?.shopName ?? null;
 
   // Link a paint shop (redeem an access code).
   const [linkOpen, setLinkOpen] = useState(false);
@@ -43,6 +53,9 @@ export default function Account() {
     setLinkError(null);
     try {
       setLinked(await accessCodesApi.redeem(code));
+      // The code carries the projects, the brands and the products — every one of
+      // those reads is now stale.
+      queryClient.invalidateQueries({ queryKey: ['account'] });
     } catch (err) {
       if (err instanceof ApiError && (err.status === 404 || err.status === 400)) {
         setLinkError('That code isn’t valid, or it has expired.');
@@ -76,11 +89,38 @@ export default function Account() {
           </View>
           <View style={styles.profileMeta}>
             <Text variant="heading">{user?.name ?? 'Your account'}</Text>
-            {user?.email ? <Text variant="bodySoft">{user.email}</Text> : null}
+            {/* An account provisioned from a shop code has no real address — the
+                shop it belongs to is the identity worth showing instead. */}
+            {user?.email ? (
+              <Text variant="bodySoft">{user.email}</Text>
+            ) : shopName ? (
+              <Text variant="bodySoft">Customer of {shopName}</Text>
+            ) : null}
           </View>
           {role ? <StatusPill label={role} tone="done" /> : null}
         </View>
       </Card>
+
+      <EntitlementCard />
+
+      {assigned.data ? (
+        <Card onPress={() => router.push('/assigned-products')}>
+          <View style={styles.linkRow}>
+            <View style={styles.linkIcon}>
+              <Ionicons name="pricetags-outline" size={20} color={colors.accentSoft} />
+            </View>
+            <View style={styles.linkText}>
+              <Text variant="heading">Your products</Text>
+              <Text variant="bodySoft">
+                {assigned.data.products.length > 0
+                  ? `${assigned.data.products.length} product${assigned.data.products.length === 1 ? '' : 's'} picked for you${shopName ? ` by ${shopName}` : ''}.`
+                  : `The paint companies ${shopName ?? 'your shop'} opened for you.`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.fgMute} />
+          </View>
+        </Card>
+      ) : null}
 
       <Card onPress={() => setLinkOpen(true)}>
         <View style={styles.linkRow}>
@@ -88,7 +128,7 @@ export default function Account() {
             <Ionicons name="storefront-outline" size={20} color={colors.accentSoft} />
           </View>
           <View style={styles.linkText}>
-            <Text variant="heading">Link a paint shop</Text>
+            <Text variant="heading">{shopName ? 'Link another paint shop' : 'Link a paint shop'}</Text>
             <Text variant="bodySoft">Enter a shop code to connect with your retailer.</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.fgMute} />
@@ -97,7 +137,13 @@ export default function Account() {
 
       <Card>
         {user?.email ? <Row label="Email" value={user.email} /> : null}
-        <View style={styles.divider} />
+        {user?.email ? <View style={styles.divider} /> : null}
+        {shopName ? <Row label="Shop" value={shopName} /> : null}
+        {shopName ? <View style={styles.divider} /> : null}
+        {/* A shop running its own codes usually hides paint names too; saying so
+            here stops "why can't I see the colour names?" reaching the counter. */}
+        {scheme?.showNames === false ? <Row label="Paint names" value="Hidden by your shop" /> : null}
+        {scheme?.showNames === false ? <View style={styles.divider} /> : null}
         <Row label="Role" value={role ?? '—'} />
         <View style={styles.divider} />
         <Row label="Backend" value={API_ORIGIN} />

@@ -8,6 +8,8 @@ import { colors, spacing, radius } from '../../src/theme';
 import { RecolorCanvas } from '../../src/engine';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
 import { Shade } from '../../src/shades/types';
+import { shadeDisplay } from '../../src/shades/shadeCodes';
+import { useShadeCodeScheme } from '../../src/account/queries';
 
 /**
  * Phase 1 recolor-engine spike (PLAN.md §6 — the technical gate). Loads a
@@ -48,6 +50,10 @@ export default function Visualize() {
 
   const [shade, setShade] = useState<Shade>(() => shadeFromParams() ?? SAMPLE_SHADES[5]);
   const [comparing, setComparing] = useState(false);
+  // Colours read the way this shop presents them: its own code pattern, and the
+  // paint name only when the shop shows names.
+  const scheme = useShadeCodeScheme().data;
+  const display = shadeDisplay(scheme, { code: shade.code, name: shade.name });
 
   // Sync when a new shade is passed via params, by adjusting state during render
   // (React's recommended pattern), while still letting the tray override locally.
@@ -112,9 +118,10 @@ export default function Visualize() {
         <View style={styles.shadeRow}>
           <View style={[styles.selectedSwatch, { backgroundColor: shade.hex }]} />
           <View style={styles.shadeMeta}>
-            <Text variant="heading">{shade.name}</Text>
+            <Text variant="heading">{display.label}</Text>
             <Text variant="mono" color={colors.fgSoft}>
-              {shade.brand} · {shade.code}
+              {display.name ? `${shade.brand} · ` : ''}
+              {display.code}
             </Text>
           </View>
           <StatusPill label={shade.family} tone="neutral" />
@@ -135,7 +142,7 @@ export default function Visualize() {
                   ]}
                 />
                 <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
-                  {s.code}
+                  {shadeDisplay(scheme, { code: s.code, name: s.name }).code}
                 </Text>
               </Pressable>
             );

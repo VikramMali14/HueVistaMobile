@@ -1,7 +1,8 @@
-export { API_ORIGIN, API_BASE, resolveImageUrl } from './config';
+export { API_ORIGIN, API_BASE, WEB_ORIGIN, resolveImageUrl, webUrl } from './config';
 export { apiFetch, setAuthHooks } from './client';
 export type { RequestOptions, AuthHooks } from './client';
-export { ApiError, userMessage } from './errors';
+export { ApiError, userMessage, hasCode, API_CODES } from './errors';
+export type { ApiCode } from './errors';
 export { authApi } from './auth';
 export type { LoginBody, RegisterBody } from './auth';
 export * from './schemas';
@@ -24,8 +25,25 @@ export { recommendationsApi } from './recommendations';
 export { recommendationResponseSchema } from './recommendationSchemas';
 export type { RecommendationResponse, ColorCombo, MatchedShade } from './recommendationSchemas';
 export { accessCodesApi } from './accessCodes';
-export { accessCodeResponseSchema } from './accountSchemas';
-export type { AccessCodeResponse } from './accountSchemas';
+export { accountApi } from './account';
+export { billingApi, projectPurchaseOptionsSchema, formatPaise } from './billing';
+export type { ProjectPurchaseOptions } from './billing';
+export {
+  accessCodeResponseSchema,
+  redeemAccountResponseSchema,
+  customerEntitlementSchema,
+  assignedProductsSchema,
+  shadeCodeSchemeSchema,
+  shopProductSchema,
+} from './accountSchemas';
+export type {
+  AccessCodeResponse,
+  RedeemAccountResponse,
+  CustomerEntitlement,
+  AssignedProducts,
+  ShadeCodeScheme,
+  ShopProduct,
+} from './accountSchemas';
 export {
   shadeSummarySchema,
   shadeDetailSchema,

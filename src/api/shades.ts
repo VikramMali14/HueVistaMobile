@@ -82,4 +82,23 @@ export const shadesApi = {
       summaryListSchema.parse(d),
     );
   },
+
+  // ── Shop-scoped twins (signed in) ──────────────────────────────────────────
+  //
+  // The public endpoints above stay whole and cached — they are the shopfront.
+  // These apply the distributor's brand grant, so a shop set up for one paint
+  // company is never offered a shade it cannot sell. Unrestricted callers get
+  // the full catalogue, so they are always safe to call when a session exists.
+
+  /** Companies the signed-in caller's shop may work with. */
+  myBrands(): Promise<BrandSummary[]> {
+    return apiFetch('/shades/mine/brands').then((d) => brandListSchema.parse(d));
+  },
+
+  /** Shades the signed-in caller's shop may work with (same filters as `list`). */
+  mine(filters: ShadeFilters = {}): Promise<ShadeSummary[]> {
+    return apiFetch(`/shades/mine${queryString({ ...filters })}`).then((d) =>
+      summaryListSchema.parse(d),
+    );
+  },
 };

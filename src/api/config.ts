@@ -12,6 +12,22 @@ export const API_ORIGIN = (process.env.EXPO_PUBLIC_API_ORIGIN ?? 'http://localho
 export const API_BASE = `${API_ORIGIN}/api`;
 
 /**
+ * The website's origin, when the build knows it.
+ *
+ * Payments are a Razorpay Checkout web flow and the app carries no payment SDK,
+ * so buying or reopening a project hands off to the site. Unset by default: the
+ * app then names the price and says where to pay rather than opening a guessed
+ * URL.
+ */
+export const WEB_ORIGIN = (process.env.EXPO_PUBLIC_WEB_ORIGIN ?? '').replace(/\/+$/, '');
+
+/** An absolute website URL, or null when this build has no web origin configured. */
+export function webUrl(path: string): string | null {
+  if (!WEB_ORIGIN) return null;
+  return `${WEB_ORIGIN}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+/**
  * Resolve a backend image URL. The API returns either an absolute URL (S3) or an
  * origin-relative path (`/api/images/files/...`). Both image files and region
  * masks are auth-gated, so load them with the bearer token attached.

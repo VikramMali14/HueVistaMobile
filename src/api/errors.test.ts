@@ -1,4 +1,4 @@
-import { ApiError, errorFromThrown, userMessage } from './errors';
+import { API_CODES, ApiError, errorFromThrown, hasCode, userMessage } from './errors';
 
 describe('ApiError', () => {
   it('carries status, code and field errors', () => {
@@ -50,5 +50,18 @@ describe('userMessage', () => {
 
   it('falls back for unknown throwables', () => {
     expect(userMessage({})).toMatch(/something went wrong/i);
+  });
+});
+
+describe('hasCode', () => {
+  it('matches the backend code carried on a refusal', () => {
+    const err = new ApiError({ message: 'Ask your shop.', status: 402, code: 'ASK_RETAILER' });
+    expect(hasCode(err, API_CODES.ASK_RETAILER)).toBe(true);
+    expect(hasCode(err, API_CODES.SUBSCRIPTION_REQUIRED)).toBe(false);
+  });
+
+  it('is false for a plain error or a codeless ApiError', () => {
+    expect(hasCode(new Error('boom'), API_CODES.ASK_RETAILER)).toBe(false);
+    expect(hasCode(new ApiError({ message: 'x', status: 402 }), API_CODES.ASK_RETAILER)).toBe(false);
   });
 });
