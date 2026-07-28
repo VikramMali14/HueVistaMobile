@@ -1,5 +1,15 @@
 import { useRef, useState } from 'react';
-import { View, StyleSheet, Pressable, ScrollView, ActivityIndicator, useWindowDimensions, Share } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+  useWindowDimensions,
+  Share,
+  Linking,
+  type GestureResponderEvent,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,14 +19,31 @@ import { captureRef } from 'react-native-view-shot';
 import { Text, Button, Card, StatusPill } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
-import { projectsApi, regionMaskUrl, resolveImageUrl, recommendationsApi, ApiError, RecommendationResponse } from '../../src/api';
+import {
+  projectsApi,
+  regionMaskUrl,
+  resolveImageUrl,
+  recommendationsApi,
+  ApiError,
+  API_CODES,
+  hasCode,
+  formatPaise,
+  webUrl,
+  RecommendationResponse,
+} from '../../src/api';
 import { useAuthedSkImage, PaintedPhoto, PaintLayer } from '../../src/engine';
 import { usePopularShades } from '../../src/shades/queries';
 import { summaryToShade, Shade } from '../../src/shades/types';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
+import { shadeDisplay } from '../../src/shades/shadeCodes';
 import { RecommendationsSheet } from '../../src/projects/RecommendationsSheet';
+import { useRequestMoreProjects, useShadeCodeScheme } from '../../src/account/queries';
+import { expiryText } from '../../src/account/EntitlementCard';
 
 type Applied = { hex: string; code?: string };
+
+/** How wall detection was asked for: AI, or by hand (free on every plan). */
+type MaskMode = 'AUTO' | 'MANUAL';
 
 export default function ProjectEditor() {
   const raw = useLocalSearchParams<{ id: string }>();
@@ -32,6 +59,9 @@ export default function ProjectEditor() {
   const photoUrl = resolveImageUrl(project?.cleanedImageUrl ?? project?.imageUrl);
   const photo = useAuthedSkImage(photoUrl);
 
+  // How this shop labels a colour: its own code pattern, names shown or hidden.
+  const scheme = useShadeCodeScheme().data;
+
   // Shade tray: live popular shades, sample as offline fallback.
   const popular = (usePopularShades(12).data ?? []).map(summaryToShade).filter((s): s is Shade => s !== null);
   const tray = popular.length > 0 ? popular : SAMPLE_SHADES;
@@ -41,6 +71,24 @@ export default function ProjectEditor() {
   const [starting, setStarting] = useState(false);
   const [segmentError, setSegmentError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  /**
+   * View-only: the room and its last colours are all still here — what has ended
+   * is the ability to change them. Stated once, above the canvas, with the way
+   * out, rather than as a failure on every swatch the user taps.
+   */
+  const readOnly = project?.readOnly ?? false;
+  const reopenPaise = project?.reopenPricePaise ?? 0;
+
+  // Marking walls by hand: free on every plan, and the way through when AI
+  // wall-detection isn't available. A tap on the photo segments that surface.
+  const [marking, setMarking] = useState(false);
+  const [markBusy, setMarkBusy] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
+
+  // A shop-onboarded customer who is out of projects asks the shop, not Checkout.
+  const askRetailer = useRequestMoreProjects();
+  const [blocked, setBlocked] = useState<{ code: string; message: string } | null>(null);
 
   // AI suggest + Share.
   const [recsOpen, setRecsOpen] = useState(false);
@@ -74,7 +122,7 @@ export default function ProjectEditor() {
     .filter((l): l is PaintLayer => l !== null);
 
   async function applyShade(shade: Shade) {
-    if (selectedRegionId == null) return;
+    if (selectedRegionId == null || readOnly) return;
     Haptics.selectionAsync().catch(() => {});
     setOverrides((prev) => ({ ...prev, [selectedRegionId]: { hex: shade.hex, code: shade.code } }));
     try {
@@ -111,7 +159,9 @@ export default function ProjectEditor() {
     setActionError(null);
     setActionMsg(null);
     try {
-      const res = await projectsApi.share(id, { days: 7 });
+      // 10 days is the ceiling: a share link hands over the same repaint
+      // capability a walk-in code does, so the two expire on the same clock.
+      const res = await projectsApi.share(id, { days: 10 });
       await Share.share({ message: `See my room in HueVista: ${res.shareUrl}`, url: res.shareUrl });
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Couldn’t create a share link.');
@@ -140,15 +190,38 @@ export default function ProjectEditor() {
     }
   }
 
-  async function startSegmentation() {
+  /**
+   * Start wall detection.
+   *
+   * AUTO runs AI detection and spends an auto-mask credit; MANUAL stops after
+   * the compulsory photo clean-up so the walls are marked by hand — free, and
+   * unlimited on every tier. When AUTO comes back 402 AUTO_MASK_UNAVAILABLE the
+   * user is steered to MANUAL rather than to a payment they may not need.
+   */
+  async function startSegmentation(mode: MaskMode = 'AUTO') {
     setStarting(true);
     setSegmentError(null);
+    setBlocked(null);
     try {
-      await projectsApi.segment(id, 'AUTO');
+      await projectsApi.segment(id, mode);
+      setMarking(mode === 'MANUAL');
       await queryClient.invalidateQueries({ queryKey: ['projects', id] });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 402) {
-        setSegmentError('This plan has no auto wall-detection credits left.');
+      if (hasCode(err, API_CODES.AUTO_MASK_UNAVAILABLE)) {
+        setBlocked({
+          code: API_CODES.AUTO_MASK_UNAVAILABLE,
+          message:
+            (err as ApiError).message ||
+            'AI wall detection isn’t available on this plan right now.',
+        });
+      } else if (hasCode(err, API_CODES.ASK_RETAILER)) {
+        setBlocked({ code: API_CODES.ASK_RETAILER, message: (err as ApiError).message });
+      } else if (hasCode(err, API_CODES.SUBSCRIPTION_REQUIRED)) {
+        setBlocked({ code: API_CODES.SUBSCRIPTION_REQUIRED, message: (err as ApiError).message });
+      } else if (hasCode(err, API_CODES.IMAGE_LIMIT_REACHED)) {
+        setBlocked({ code: API_CODES.IMAGE_LIMIT_REACHED, message: (err as ApiError).message });
+      } else if (err instanceof ApiError && err.status === 402) {
+        setSegmentError(err.message || 'This plan has no wall-detection credits left.');
       } else if (err instanceof ApiError && err.status === 409) {
         await queryClient.invalidateQueries({ queryKey: ['projects', id] }); // already running
       } else {
@@ -156,6 +229,54 @@ export default function ProjectEditor() {
       }
     } finally {
       setStarting(false);
+    }
+  }
+
+  /**
+   * Mark a wall by tapping it. The tap's position on the canvas becomes
+   * normalized (0–1) image coordinates and SAM 2 segments that surface.
+   *
+   * The canvas draws the photo with `fit="cover"`, so the on-screen box may crop
+   * the image; the tap is mapped back through the same fit, otherwise every tap
+   * on a non-matching aspect ratio would land on the wrong part of the photo.
+   */
+  async function markWallAt(event: GestureResponderEvent) {
+    if (!marking || markBusy || readOnly) return;
+    const { locationX, locationY } = event.nativeEvent;
+    const photoAspect = photo ? photo.width() / photo.height() : canvasW / canvasH;
+    const boxAspect = canvasW / canvasH;
+    // "cover": the image fills the box and overflows on the longer axis.
+    const drawnW = photoAspect > boxAspect ? canvasH * photoAspect : canvasW;
+    const drawnH = photoAspect > boxAspect ? canvasH : canvasW / photoAspect;
+    const x = (locationX + (drawnW - canvasW) / 2) / drawnW;
+    const y = (locationY + (drawnH - canvasH) / 2) / drawnH;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+    setMarkBusy(true);
+    setMarkError(null);
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      const region = await projectsApi.segmentPoint(id, x, y, `Wall ${regions.length + 1}`);
+      await queryClient.invalidateQueries({ queryKey: ['projects', id] });
+      setSelectedRegionId(region.id);
+    } catch (err) {
+      setMarkError(
+        err instanceof ApiError ? err.message : 'Couldn’t mark that wall. Try tapping its middle.',
+      );
+    } finally {
+      setMarkBusy(false);
+    }
+  }
+
+  /** Remove a wall the user marked by hand. AI-detected ones are protected (400). */
+  async function removeRegion(regionId: number) {
+    setMarkError(null);
+    try {
+      await projectsApi.deleteRegion(id, regionId);
+      setSelectedRegionId(null);
+      await queryClient.invalidateQueries({ queryKey: ['projects', id] });
+    } catch (err) {
+      setMarkError(err instanceof ApiError ? err.message : 'Couldn’t remove that wall.');
     }
   }
 
@@ -176,15 +297,54 @@ export default function ProjectEditor() {
         {project?.name ?? 'Room'}
       </Text>
 
-      {/* Canvas */}
-      <View ref={shotRef} collapsable={false} style={[styles.canvasFrame, { height: canvasH }]}>
-        {isLoading || !photo ? (
-          <View style={styles.canvasCenter}>
-            <ActivityIndicator color={colors.accent} />
-          </View>
-        ) : (
-          <PaintedPhoto photo={photo} layers={status === 'SEGMENTED' ? layers : []} width={canvasW} height={canvasH} />
-        )}
+      {/* View-only. Said once, above the canvas, with the one action that fixes
+          it — not as a failure on every swatch. */}
+      {readOnly ? (
+        <Card style={styles.viewOnly}>
+          <Text variant="label" color={colors.warning}>
+            View only
+          </Text>
+          <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
+            {project?.readOnlyReason ??
+              'This project is view-only — you can still see the colours that were last applied.'}
+          </Text>
+          {reopenPaise > 0 ? (
+            <View style={styles.reopen}>
+              <Text variant="body">Reopening it costs {formatPaise(reopenPaise)}.</Text>
+              {webUrl('/dashboard') ? (
+                <Button
+                  label="Reopen on the website"
+                  variant="secondary"
+                  fullWidth
+                  onPress={() => Linking.openURL(webUrl('/dashboard') as string).catch(() => {})}
+                />
+              ) : (
+                <Text variant="caption">
+                  Payments run on the HueVista website — open your dashboard there to reopen this room.
+                </Text>
+              )}
+            </View>
+          ) : null}
+        </Card>
+      ) : project?.accessExpiresAt && expiryText(project.accessExpiresAt) ? (
+        <Text variant="caption">Open until {expiryText(project.accessExpiresAt)}</Text>
+      ) : null}
+
+      {/* Canvas. In marking mode a tap segments the wall under the finger. */}
+      <Pressable
+        onPress={markWallAt}
+        disabled={!marking || markBusy || readOnly}
+        style={[styles.canvasFrame, { height: canvasH }]}
+      >
+        <View ref={shotRef} collapsable={false} style={StyleSheet.absoluteFill}>
+          {isLoading || !photo ? (
+            <View style={styles.canvasCenter}>
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : (
+            <PaintedPhoto photo={photo} layers={status === 'SEGMENTED' ? layers : []} width={canvasW} height={canvasH} />
+          )}
+        </View>
         {status === 'SEGMENTING' ? (
           <View style={styles.canvasOverlay}>
             <ActivityIndicator color="#fff" />
@@ -196,7 +356,64 @@ export default function ProjectEditor() {
             </Text>
           </View>
         ) : null}
-      </View>
+        {markBusy ? (
+          <View style={styles.canvasOverlay}>
+            <ActivityIndicator color="#fff" />
+            <Text variant="label" color="#fff" style={{ marginTop: spacing.sm }}>
+              Marking that wall…
+            </Text>
+          </View>
+        ) : marking && !readOnly ? (
+          <View style={styles.markHint} pointerEvents="none">
+            <Text variant="caption" color="#fff">
+              Tap the middle of a wall to mark it
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>
+
+      {/* A refusal the user can act on: what stopped, and the way through. */}
+      {blocked ? (
+        <Card>
+          <Text variant="label" color={colors.warning}>
+            {blocked.code === API_CODES.ASK_RETAILER
+              ? 'Your shop adds projects'
+              : blocked.code === API_CODES.AUTO_MASK_UNAVAILABLE
+                ? 'AI wall detection unavailable'
+                : blocked.code === API_CODES.IMAGE_LIMIT_REACHED
+                  ? 'Image allowance spent'
+                  : 'Subscription needed'}
+          </Text>
+          <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
+            {blocked.message}
+          </Text>
+          {blocked.code === API_CODES.AUTO_MASK_UNAVAILABLE ? (
+            <Button
+              label="Mark the walls myself (free)"
+              variant="secondary"
+              fullWidth
+              style={styles.gateAction}
+              loading={starting}
+              onPress={() => startSegmentation('MANUAL')}
+            />
+          ) : blocked.code === API_CODES.ASK_RETAILER ? (
+            askRetailer.isSuccess ? (
+              <Text variant="label" color={colors.success} style={styles.gateAction}>
+                Asked ✓ — your shop has been notified.
+              </Text>
+            ) : (
+              <Button
+                label="Ask my shop"
+                variant="secondary"
+                fullWidth
+                style={styles.gateAction}
+                loading={askRetailer.isPending}
+                onPress={() => askRetailer.mutate()}
+              />
+            )
+          ) : null}
+        </Card>
+      ) : null}
 
       {/* Status-driven controls */}
       {status === 'CREATED' ? (
@@ -207,7 +424,16 @@ export default function ProjectEditor() {
               {segmentError}
             </Text>
           ) : null}
-          <Button label="Detect walls" size="lg" fullWidth loading={starting} onPress={startSegmentation} />
+          <Button label="Detect walls" size="lg" fullWidth loading={starting} onPress={() => startSegmentation('AUTO')} />
+          {/* Free on every plan, so it is offered up front rather than kept as
+              the consolation prize after a refused AI run. */}
+          <Button
+            label="Mark walls myself"
+            variant="secondary"
+            fullWidth
+            disabled={starting}
+            onPress={() => startSegmentation('MANUAL')}
+          />
         </View>
       ) : null}
 
@@ -221,16 +447,38 @@ export default function ProjectEditor() {
               {project?.failureReason ?? 'Something went wrong during detection.'}
             </Text>
           </Card>
-          <Button label="Try again" size="lg" fullWidth loading={starting} onPress={startSegmentation} />
+          <Button label="Try again" size="lg" fullWidth loading={starting} onPress={() => startSegmentation('AUTO')} />
+          <Button
+            label="Mark walls myself"
+            variant="secondary"
+            fullWidth
+            disabled={starting}
+            onPress={() => startSegmentation('MANUAL')}
+          />
         </View>
       ) : null}
 
-      {status === 'SEGMENTED' && regions.length === 0 ? (
-        <Card>
-          <Text variant="bodySoft">
-            No walls were detected automatically. Marking walls by hand is coming in the next update.
-          </Text>
-        </Card>
+      {status === 'SEGMENTED' && regions.length === 0 && !readOnly ? (
+        <View style={styles.block}>
+          <Card>
+            <Text variant="bodySoft">
+              {project?.maskMode === 'MANUAL'
+                ? 'Your photo is ready. Tap each wall you want to paint and we’ll cut it out for you.'
+                : 'No walls were detected automatically. You can mark them yourself — tap a wall and we’ll cut it out.'}
+            </Text>
+          </Card>
+          <Button
+            label={marking ? 'Done marking' : 'Mark walls by tapping'}
+            size="lg"
+            fullWidth
+            onPress={() => setMarking((m) => !m)}
+          />
+          {markError ? (
+            <Text variant="body" color={colors.danger}>
+              {markError}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
 
       {status === 'SEGMENTED' && regions.length > 0 ? (
@@ -240,6 +488,9 @@ export default function ProjectEditor() {
             <Button
               label="Suggest"
               variant="secondary"
+              // Suggestions exist to be applied; on a view-only room there is
+              // nothing to apply them to, and the call is quota-billed.
+              disabled={readOnly}
               icon={<Ionicons name="sparkles" size={16} color={colors.fg} />}
               onPress={openRecommendations}
               style={styles.actionBtn}
@@ -273,7 +524,16 @@ export default function ProjectEditor() {
 
           {/* Region chips */}
           <View style={styles.block}>
-            <Text variant="label">Wall</Text>
+            <View style={styles.blockHead}>
+              <Text variant="label">Wall</Text>
+              {!readOnly ? (
+                <Pressable onPress={() => setMarking((m) => !m)} hitSlop={8}>
+                  <Text variant="label" color={marking ? colors.accentSoft : colors.fgSoft}>
+                    {marking ? 'Done marking' : '+ Mark another wall'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowGap}>
               {regions.map((r, i) => {
                 const c = appliedColor(r.id, r.appliedHexCode);
@@ -292,20 +552,44 @@ export default function ProjectEditor() {
                 );
               })}
             </ScrollView>
+            {markError ? (
+              <Text variant="caption" color={colors.danger}>
+                {markError}
+              </Text>
+            ) : null}
+            {/* Only hand-marked walls can be removed; AI ones are protected. */}
+            {!readOnly && selectedRegionId != null && regions.find((r) => r.id === selectedRegionId)?.manual ? (
+              <Pressable onPress={() => removeRegion(selectedRegionId)} hitSlop={8}>
+                <Text variant="label" color={colors.danger}>
+                  Remove this wall
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {/* Shade tray */}
           <View style={styles.block}>
-            <Text variant="label">Tap a shade to paint the selected wall</Text>
+            <Text variant="label">
+              {readOnly ? 'Colours last applied' : 'Tap a shade to paint the selected wall'}
+            </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowGap}>
-              {tray.map((s) => (
-                <Pressable key={`${s.brandSlug ?? ''}-${s.code}`} onPress={() => applyShade(s)} style={styles.swatchButton}>
-                  <View style={[styles.traySwatch, { backgroundColor: s.hex }]} />
-                  <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
-                    {s.name}
-                  </Text>
-                </Pressable>
-              ))}
+              {tray.map((s) => {
+                // The shop's own code, and its name only if the shop shows names.
+                const display = shadeDisplay(scheme, { code: s.code, name: s.name });
+                return (
+                  <Pressable
+                    key={`${s.brandSlug ?? ''}-${s.code}`}
+                    onPress={() => applyShade(s)}
+                    disabled={readOnly}
+                    style={[styles.swatchButton, readOnly && styles.swatchDisabled]}
+                  >
+                    <View style={[styles.traySwatch, { backgroundColor: s.hex }]} />
+                    <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
+                      {display.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
             {saveError ? (
               <Text variant="caption" color={colors.warning}>
@@ -344,7 +628,20 @@ const styles = StyleSheet.create({
   },
   canvasCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   canvasOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.scrim },
+  markHint: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.scrim,
+  },
   block: { gap: spacing.sm },
+  blockHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  viewOnly: { borderColor: colors.warning + '55' },
+  reopen: { marginTop: spacing.md, gap: spacing.sm },
+  gateAction: { marginTop: spacing.md },
   actionsRow: { flexDirection: 'row', gap: spacing.md },
   actionBtn: { flex: 1 },
   rowGap: { gap: spacing.sm, paddingVertical: spacing.xs },
@@ -353,6 +650,7 @@ const styles = StyleSheet.create({
   regionChipIdle: { backgroundColor: colors.surface, borderColor: colors.rule },
   regionDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1 },
   swatchButton: { width: 64, gap: spacing.xs, alignItems: 'center' },
+  swatchDisabled: { opacity: 0.45 },
   traySwatch: { width: 64, height: 64, borderRadius: radius.card, borderWidth: 1, borderColor: colors.rule },
   trayLabel: { textAlign: 'center', width: 64 },
 });

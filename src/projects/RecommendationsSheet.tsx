@@ -1,8 +1,10 @@
 import { View, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { SheetModal, Text, Card } from '../components';
 import { colors, spacing, radius } from '../theme';
-import { RecommendationResponse, MatchedShade } from '../api';
+import { RecommendationResponse, MatchedShade, ShadeCodeScheme } from '../api';
 import { Shade } from '../shades/types';
+import { shadeDisplay } from '../shades/shadeCodes';
+import { useShadeCodeScheme } from '../account/queries';
 
 interface Props {
   visible: boolean;
@@ -27,8 +29,21 @@ function toShade(hex?: string | null, matched?: MatchedShade | null, roleLabel?:
   return null;
 }
 
-function Swatch({ label, shade, onApply }: { label: string; shade: Shade | null; onApply: (s: Shade) => void }) {
+function Swatch({
+  label,
+  shade,
+  scheme,
+  onApply,
+}: {
+  label: string;
+  shade: Shade | null;
+  scheme: ShadeCodeScheme | undefined;
+  onApply: (s: Shade) => void;
+}) {
   if (!shade) return null;
+  // A suggestion is still a catalogue shade, so it reads the way every other
+  // swatch under this shop reads — the shop's code, never the manufacturer's.
+  const display = shadeDisplay(scheme, { code: shade.code, name: shade.name });
   return (
     <Pressable style={styles.swatchCol} onPress={() => onApply(shade)}>
       <View style={[styles.swatch, { backgroundColor: shade.hex }]} />
@@ -36,7 +51,7 @@ function Swatch({ label, shade, onApply }: { label: string; shade: Shade | null;
         {label}
       </Text>
       <Text variant="caption" numberOfLines={1} style={styles.swatchName}>
-        {shade.code !== '—' ? shade.code : shade.hex.toUpperCase()}
+        {shade.code !== '—' ? display.code : shade.hex.toUpperCase()}
       </Text>
     </Pressable>
   );
@@ -45,6 +60,7 @@ function Swatch({ label, shade, onApply }: { label: string; shade: Shade | null;
 /** Bottom-sheet of Claude's three suggested palettes. Tap any swatch to paint
  *  the selected wall with it. */
 export function RecommendationsSheet({ visible, onClose, loading, error, data, onApply }: Props) {
+  const scheme = useShadeCodeScheme().data;
   return (
     <SheetModal visible={visible} onClose={onClose} title="AI palette ideas">
       {loading ? (
@@ -72,9 +88,9 @@ export function RecommendationsSheet({ visible, onClose, loading, error, data, o
                 </Text>
               ) : null}
               <View style={styles.swatchRow}>
-                <Swatch label="Primary" shade={toShade(combo.primaryHex, combo.primaryShade, 'Primary')} onApply={onApply} />
-                <Swatch label="Accent" shade={toShade(combo.accentHex, combo.accentShade, 'Accent')} onApply={onApply} />
-                <Swatch label="Trim" shade={toShade(combo.trimHex, combo.trimShade, 'Trim')} onApply={onApply} />
+                <Swatch label="Primary" shade={toShade(combo.primaryHex, combo.primaryShade, 'Primary')} scheme={scheme} onApply={onApply} />
+                <Swatch label="Accent" shade={toShade(combo.accentHex, combo.accentShade, 'Accent')} scheme={scheme} onApply={onApply} />
+                <Swatch label="Trim" shade={toShade(combo.trimHex, combo.trimShade, 'Trim')} scheme={scheme} onApply={onApply} />
               </View>
             </Card>
           ))}

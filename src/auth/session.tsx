@@ -11,6 +11,12 @@ interface SessionValue {
   role: UserRole | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (body: RegisterBody) => Promise<void>;
+  /**
+   * Adopt a session the backend has already minted — the access-code redeem
+   * flow, where the customer never had an account to sign into and the redeem
+   * response IS the session.
+   */
+  signInWithSession: (res: AuthResponse) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -111,6 +117,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [applyAuth],
   );
 
+  const signInWithSession = useCallback(
+    async (res: AuthResponse) => {
+      await applyAuth(res);
+    },
+    [applyAuth],
+  );
+
   const signOut = useCallback(async () => {
     try {
       await authApi.logout();
@@ -123,8 +136,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<SessionValue>(
-    () => ({ status, user, role: user?.role ?? null, signIn, signUp, signOut }),
-    [status, user, signIn, signUp, signOut],
+    () => ({ status, user, role: user?.role ?? null, signIn, signUp, signInWithSession, signOut }),
+    [status, user, signIn, signUp, signInWithSession, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

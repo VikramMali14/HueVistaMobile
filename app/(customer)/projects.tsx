@@ -5,6 +5,7 @@ import { Screen, Text, Card, Button, StatusPill, AuthedImage } from '../../src/c
 import type { StatusTone } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useProjects } from '../../src/projects/queries';
+import { EntitlementCard, expiryText } from '../../src/account';
 import type { ProjectSummary } from '../../src/api';
 
 function statusTone(status: string): StatusTone {
@@ -52,6 +53,8 @@ export default function Projects() {
         <Button label="New" icon={<Ionicons name="add" size={18} color="#fff" />} onPress={() => router.push('/new-project')} />
       </View>
 
+      <EntitlementCard />
+
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -73,23 +76,43 @@ export default function Projects() {
         </Card>
       ) : (
         <View style={styles.list}>
-          {data!.map((p: ProjectSummary) => (
-            <Card key={p.id} padded={false} onPress={() => router.push(`/project/${p.id}`)}>
-              <AuthedImage url={p.imageUrl} style={styles.thumb} contentFit="cover" transition={150} />
-              <View style={styles.cardBody}>
-                <View style={styles.cardRow}>
-                  <Text variant="heading" numberOfLines={1} style={styles.cardName}>
-                    {p.name ?? 'Untitled room'}
+          {data!.map((p: ProjectSummary) => {
+            const endsIn = expiryText(p.accessExpiresAt);
+            return (
+              <Card key={p.id} padded={false} onPress={() => router.push(`/project/${p.id}`)}>
+                {/* The cleaned photo is what the masks align to, so it is the
+                    honest thumbnail once the AI clean-up has run. */}
+                <AuthedImage
+                  url={p.cleanedImageUrl ?? p.imageUrl}
+                  style={styles.thumb}
+                  contentFit="cover"
+                  transition={150}
+                />
+                <View style={styles.cardBody}>
+                  <View style={styles.cardRow}>
+                    <Text variant="heading" numberOfLines={1} style={styles.cardName}>
+                      {p.name ?? 'Untitled room'}
+                    </Text>
+                    <StatusPill label={statusLabel(p.status)} tone={statusTone(p.status)} />
+                  </View>
+                  <Text variant="caption">
+                    {p.regionCount} {p.regionCount === 1 ? 'wall' : 'walls'}
+                    {when(p.updatedAt) ? ` · ${when(p.updatedAt)}` : ''}
                   </Text>
-                  <StatusPill label={statusLabel(p.status)} tone={statusTone(p.status)} />
+                  <View style={styles.badgeRow}>
+                    {p.readOnly ? <StatusPill label="View only" tone="expired" /> : null}
+                    {/* A room made under a shop's code, shown for what it is. */}
+                    {p.source === 'CUSTOMER' && p.customerName ? (
+                      <StatusPill label={p.customerName} tone="neutral" />
+                    ) : null}
+                    {!p.readOnly && endsIn && endsIn !== 'expired' ? (
+                      <Text variant="caption">Open until {endsIn}</Text>
+                    ) : null}
+                  </View>
                 </View>
-                <Text variant="caption">
-                  {p.regionCount} {p.regionCount === 1 ? 'wall' : 'walls'}
-                  {when(p.updatedAt) ? ` · ${when(p.updatedAt)}` : ''}
-                </Text>
-              </View>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </View>
       )}
     </Screen>
@@ -110,6 +133,7 @@ const styles = StyleSheet.create({
   },
   cardBody: { padding: spacing.md, gap: spacing.xs },
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
   cardName: { flex: 1 },
   empty: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xxl },
   emptyIcon: {

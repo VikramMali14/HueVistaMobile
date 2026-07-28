@@ -1,5 +1,10 @@
 import { apiFetch } from './client';
-import { accessCodeResponseSchema, AccessCodeResponse } from './accountSchemas';
+import {
+  accessCodeResponseSchema,
+  redeemAccountResponseSchema,
+  AccessCodeResponse,
+  RedeemAccountResponse,
+} from './accountSchemas';
 
 export const accessCodesApi = {
   /**
@@ -11,5 +16,19 @@ export const accessCodesApi = {
     return apiFetch('/access-codes/redeem', { method: 'POST', json: { code: code.trim() } }).then((d) =>
       accessCodeResponseSchema.parse(d),
     );
+  },
+
+  /**
+   * Redeem with no account at all. The backend provisions a passwordless
+   * CUSTOMER account in the name the shop entered and returns a full session, so
+   * a walk-in goes from a code on a slip to a signed-in app in one step — no
+   * sign-up form, and no password to invent at the counter.
+   */
+  redeemAccount(code: string): Promise<RedeemAccountResponse> {
+    return apiFetch('/access-codes/redeem-account', {
+      method: 'POST',
+      json: { code: code.trim() },
+      skipAuth: true,
+    }).then((d) => redeemAccountResponseSchema.parse(d));
   },
 };

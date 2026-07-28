@@ -58,6 +58,20 @@ export const projectSchema = z.object({
   sentToShopAt: z.string().nullish(),
   createdAt: z.string().nullish(),
   updatedAt: z.string().nullish(),
+
+  // ─── Access ────────────────────────────────────────────────────────────────
+  /**
+   * Look-but-don't-touch: the colours last applied still render, but every write
+   * is refused. The editor disables the palette on this rather than letting the
+   * user paint and then fail on save.
+   */
+  readOnly: z.boolean().default(false),
+  /** Why, in a sentence fit to show. Null when the project is fully open. */
+  readOnlyReason: z.string().nullish(),
+  /** When this project's paid validity runs out; null when it has no window. */
+  accessExpiresAt: z.string().nullish(),
+  /** What reopening a lapsed project costs, in paise. */
+  reopenPricePaise: z.number().default(0),
 });
 export type Project = z.infer<typeof projectSchema>;
 
@@ -76,9 +90,19 @@ export const projectSummarySchema = z.object({
   status: z.string(),
   imageId: z.string().nullish(),
   imageUrl: z.string().nullish(),
+  /** Cleaned (AI photo clean-up) image, when one exists — the better thumbnail. */
+  cleanedImageUrl: z.string().nullish(),
   regionCount: z.number().default(0),
   hasShareLink: z.boolean().default(false),
   createdAt: z.string().nullish(),
   updatedAt: z.string().nullish(),
+  /** "OWN" — the reader made it; "CUSTOMER" — made under a code their shop issued. */
+  source: z.string().nullish(),
+  customerName: z.string().nullish(),
+  accessCode: z.string().nullish(),
+  accessCodeId: z.string().nullish(),
+  /** Lapsed subscription, or the room's own validity ran out. */
+  readOnly: z.boolean().default(false),
+  accessExpiresAt: z.string().nullish(),
 });
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;

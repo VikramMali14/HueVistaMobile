@@ -3,9 +3,11 @@ import { View, StyleSheet, Pressable, ScrollView, FlatList, ActivityIndicator } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, Input, Chip, StatusPill } from '../components';
 import { colors, spacing, radius } from '../theme';
-import { useShadeBrands, useShadesInfinite, useShadeFamilies } from './queries';
+import { useShadesInfinite, useShadeFamilies } from './queries';
 import { ShadeSummary } from '../api';
 import { ShadeDetailSheet } from './ShadeDetailSheet';
+import { shadeDisplay, searchTermFor } from './shadeCodes';
+import { useAllowedBrands, useShadeCodeScheme } from '../account/queries';
 
 /** Debounce a rapidly-changing value (search box) to avoid a request per keystroke. */
 function useDebouncedValue<T>(value: T, delay = 350): T {
@@ -42,9 +44,38 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
   const search = useDebouncedValue(searchInput.trim());
   const [selected, setSelected] = useState<ShadeSummary | null>(null);
 
-  const brandsQuery = useShadeBrands();
-  const familiesQuery = useShadeFamilies(brandSlug);
-  const shadesQuery = useShadesInfinite({ brand: brandSlug, family, search: search || undefined });
+  /**
+   * The companies this account may actually work with — a customer's from the
+   * code their shop issued, a shop's from its distributor's grant. Signed-out
+   * browsing is unrestricted, so the guest library is unchanged.
+   */
+  const allowed = useAllowedBrands();
+  const scheme = useShadeCodeScheme().data;
+
+  /**
+   * A restricted account has no "all brands" view to fall back to: the catalogue
+   * endpoint is public and unfiltered, so leaving the brand unset would show
+   * companies this shop was explicitly not given. Defaulting to the first allowed
+   * company keeps every shade on screen one they can actually buy.
+   *
+   * Derived rather than written into state, so it settles the moment the
+   * restriction loads instead of a render later.
+   */
+  const effectiveBrand =
+    brandSlug ?? (allowed.restricted ? allowed.brands[0]?.slug : undefined);
+
+  const familiesQuery = useShadeFamilies(effectiveBrand);
+  /**
+   * Under a shop's pattern the encoded code is the only one on screen, so it is
+   * the only one the customer can type — but the catalogue indexes the real
+   * code. Decode first, and a search for what they can see actually finds it.
+   */
+  const searchTerm = search ? searchTermFor(scheme, search) : undefined;
+  const shadesQuery = useShadesInfinite({
+    brand: effectiveBrand,
+    family,
+    search: searchTerm,
+  });
 
   const shades = useMemo(
     () => (shadesQuery.data?.pages ?? []).flatMap((p) => p.content).filter((s) => !!s.hexCode),
@@ -68,13 +99,21 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
       <Input placeholder="Search name or code" value={searchInput} onChangeText={setSearchInput} autoCapitalize="none" />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        <Chip label="All brands" selected={!brandSlug} onPress={() => pickBrand(undefined)} />
-        {brandsQuery.data?.map((b) => (
-          <Chip key={b.slug} label={b.name} selected={brandSlug === b.slug} onPress={() => pickBrand(b.slug)} />
+        {!allowed.restricted ? (
+          <Chip label="All brands" selected={!brandSlug} onPress={() => pickBrand(undefined)} />
+        ) : null}
+        {allowed.brands.map((b) => (
+          <Chip key={b.slug} label={b.name} selected={effectiveBrand === b.slug} onPress={() => pickBrand(b.slug)} />
         ))}
       </ScrollView>
 
-      {brandSlug && (familiesQuery.data?.length ?? 0) > 0 ? (
+      {allowed.restricted && allowed.brands.length === 0 ? (
+        <Text variant="bodySoft">
+          Your shop hasn&apos;t opened any paint companies for you yet. Ask them at the counter.
+        </Text>
+      ) : null}
+
+      {effectiveBrand && (familiesQuery.data?.length ?? 0) > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           <Chip label="All families" selected={!family} onPress={() => setFamily(undefined)} />
           {familiesQuery.data?.map((f) => (
@@ -104,18 +143,22 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
         onEndReached={() => {
           if (shadesQuery.hasNextPage && !shadesQuery.isFetchingNextPage) shadesQuery.fetchNextPage();
         }}
-        renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => setSelected(item)}>
-            <View style={[styles.swatch, { backgroundColor: item.hexCode ?? colors.surface2 }]} />
-            <Text variant="heading" numberOfLines={1}>
-              {item.name ?? item.shadeCode}
-            </Text>
-            <Text variant="mono" color={colors.fgSoft} numberOfLines={1}>
-              {item.brandName ? `${item.brandName} · ` : ''}
-              {item.shadeCode}
-            </Text>
-          </Pressable>
-        )}
+        renderItem={({ item }) => {
+          // The shop's own code, and the paint name only if the shop shows names.
+          const display = shadeDisplay(scheme, { code: item.shadeCode, name: item.name });
+          return (
+            <Pressable style={styles.card} onPress={() => setSelected(item)}>
+              <View style={[styles.swatch, { backgroundColor: item.hexCode ?? colors.surface2 }]} />
+              <Text variant="heading" numberOfLines={1}>
+                {display.label}
+              </Text>
+              <Text variant="mono" color={colors.fgSoft} numberOfLines={1}>
+                {display.name && item.brandName ? `${item.brandName} · ` : ''}
+                {display.code}
+              </Text>
+            </Pressable>
+          );
+        }}
         ListFooterComponent={
           shadesQuery.isFetching ? (
             <View style={styles.footer}>

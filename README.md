@@ -58,6 +58,11 @@ EXPO_PUBLIC_API_ORIGIN=http://localhost:8080
 > On a **physical device**, `localhost` is the phone, not your computer — use your
 > machine's LAN IP, e.g. `http://192.168.1.20:8080`. Swagger is at `<origin>/swagger-ui.html`.
 
+Optionally set `EXPO_PUBLIC_WEB_ORIGIN` to the website's origin. Payments (buying
+a project, reopening a lapsed one) run through Razorpay Checkout on the web and
+the app carries no payment SDK, so it links out. Left blank, the app still names
+the price — it just doesn't offer to open the site.
+
 ### 3. Build & run (development build)
 
 ```bash
@@ -208,6 +213,8 @@ src/
   components/        UI kit — Text, Button, Card, Pill, Input, SheetModal, StatTile, Meter, Screen
   api/               Typed client (base URL from env, 401 auto-refresh, error normalization) + zod schemas
   auth/             Session provider + secure token store (Keychain / Keystore)
+  account/          Customer entitlement, assigned products, shop shade-code scheme
+  shades/           Catalogue library + the shop's customer-code formatting
   query/            React Query client
 assets/              Icon, splash, adaptive-icon images
 .github/workflows/   CI: typecheck + lint + test
