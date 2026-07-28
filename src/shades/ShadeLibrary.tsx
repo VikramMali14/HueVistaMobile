@@ -6,7 +6,7 @@ import { colors, spacing, radius } from '../theme';
 import { useShadesInfinite, useShadeFamilies } from './queries';
 import { ShadeSummary } from '../api';
 import { ShadeDetailSheet } from './ShadeDetailSheet';
-import { shadeDisplay } from './shadeCodes';
+import { shadeDisplay, searchTermFor } from './shadeCodes';
 import { useAllowedBrands, useShadeCodeScheme } from '../account/queries';
 
 /** Debounce a rapidly-changing value (search box) to avoid a request per keystroke. */
@@ -65,10 +65,16 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
     brandSlug ?? (allowed.restricted ? allowed.brands[0]?.slug : undefined);
 
   const familiesQuery = useShadeFamilies(effectiveBrand);
+  /**
+   * Under a shop's pattern the encoded code is the only one on screen, so it is
+   * the only one the customer can type — but the catalogue indexes the real
+   * code. Decode first, and a search for what they can see actually finds it.
+   */
+  const searchTerm = search ? searchTermFor(scheme, search) : undefined;
   const shadesQuery = useShadesInfinite({
     brand: effectiveBrand,
     family,
-    search: search || undefined,
+    search: searchTerm,
   });
 
   const shades = useMemo(

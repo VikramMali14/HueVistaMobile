@@ -59,7 +59,11 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try 
             </View>
           ) : null}
 
-          {detail?.aiDescription ? (
+          {/* The catalogue prose is written from the shade's own name, so a shop
+              hiding names would have it read the name straight back out. The
+              colour's other facts (family, temperature, rooms, LRV) say plenty
+              without naming it. */}
+          {detail?.aiDescription && display.name ? (
             <Text variant="bodySoft" style={styles.desc}>
               {detail.aiDescription}
             </Text>

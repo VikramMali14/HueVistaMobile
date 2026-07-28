@@ -1,4 +1,4 @@
-import { encodeShadeCode, hasScheme, shadeDisplay } from './shadeCodes';
+import { decodeShadeCode, encodeShadeCode, hasScheme, searchTermFor, shadeDisplay } from './shadeCodes';
 import type { ShadeCodeScheme } from '../api/accountSchemas';
 
 const scheme = (over: Partial<ShadeCodeScheme> = {}): ShadeCodeScheme => ({
@@ -64,5 +64,46 @@ describe('shadeDisplay', () => {
       name: 'Ivory Mist',
       label: 'Ivory Mist',
     });
+  });
+});
+
+describe('decodeShadeCode', () => {
+  it('reverses an encode', () => {
+    const s = scheme({ prefix: 'AB', infix: 'XY', suffix: 'CD' });
+    expect(decodeShadeCode(s, encodeShadeCode(s, 'L124'))).toBe('L124');
+  });
+
+  it('is case-insensitive and returns the real code uppercased', () => {
+    expect(decodeShadeCode(scheme({ prefix: 'AB', infix: 'XY', suffix: 'CD' }), 'abl1xy24cd')).toBe('L124');
+  });
+
+  it('refuses input that does not follow the pattern', () => {
+    const s = scheme({ prefix: 'AB', infix: 'XY', suffix: 'CD' });
+    expect(decodeShadeCode(s, 'ZZL1XY24CD')).toBeNull(); // wrong prefix
+    expect(decodeShadeCode(s, 'ABL12424CD')).toBeNull(); // no infix where one is due
+    expect(decodeShadeCode(s, '')).toBeNull();
+  });
+
+  it('is null when the shop has no pattern — there is nothing to decode', () => {
+    expect(decodeShadeCode(scheme(), 'L124')).toBeNull();
+    expect(decodeShadeCode(null, 'L124')).toBeNull();
+  });
+
+  it('round-trips a code shorter than the infix position', () => {
+    const s = scheme({ prefix: 'A', infix: 'XY', suffix: 'Z' });
+    expect(decodeShadeCode(s, encodeShadeCode(s, 'L'))).toBe('L');
+  });
+});
+
+describe('searchTermFor', () => {
+  it('sends the real code when the customer types the one they can see', () => {
+    const s = scheme({ prefix: 'AB', infix: 'XY', suffix: 'CD' });
+    expect(searchTermFor(s, 'ABL1XY24CD')).toBe('L124');
+  });
+
+  it('passes a name or a fragment through untouched', () => {
+    const s = scheme({ prefix: 'AB', infix: 'XY', suffix: 'CD' });
+    expect(searchTermFor(s, 'ivory')).toBe('ivory');
+    expect(searchTermFor(scheme(), 'L124')).toBe('L124');
   });
 });
