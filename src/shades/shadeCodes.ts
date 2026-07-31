@@ -1,4 +1,4 @@
-import type { ShadeCodeScheme } from '../api/accountSchemas';
+import type { RetiredShadeCodeScheme, ShadeCodeScheme } from '../api/accountSchemas';
 
 /**
  * A shop's ONE pattern for customer-facing shade codes, mirrored from the
@@ -71,17 +71,51 @@ export function decodeShadeCode(
   return value || null;
 }
 
+/** What a decode attempt found: the real code, and which pattern read it. */
+export interface DecodeResult {
+  code: string;
+  /** null when the CURRENT pattern read it; otherwise the retired one that did. */
+  via: RetiredShadeCodeScheme | null;
+}
+
+/**
+ * Decode against the live pattern first, then every pattern the shop has retired.
+ *
+ * A shop's numbering does not live only on this screen — it is printed on colour
+ * boards, quoted on estimates and photographed off the counter. Decoding with the
+ * current pattern alone made every code already in circulation unreadable the day
+ * the shop changed it, so a customer walking in with last season's card was told
+ * their code was invalid by the shop that printed it.
+ *
+ * Current first, then newest-retired first (the order the backend sends), so a
+ * code two patterns could both read resolves to the most recent shop meaning.
+ */
+export function decodeShadeCodeAnyScheme(
+  scheme: ShadeCodeScheme | null | undefined,
+  customerCode: string,
+): DecodeResult | null {
+  const live = decodeShadeCode(scheme, customerCode);
+  if (live) return { code: live, via: null };
+  for (const past of scheme?.retired ?? []) {
+    // showNames rides along only to satisfy the type; decoding never reads it.
+    const code = decodeShadeCode({ ...past, showNames: true, retired: [] }, customerCode);
+    if (code) return { code, via: past };
+  }
+  return null;
+}
+
 /**
  * What to send to the catalogue's `search` when the user typed `input`.
  *
  * A shop code decodes back to the real one the backend indexes; anything else
- * (a name, a fragment, a raw code) goes through untouched.
+ * (a name, a fragment, a raw code) goes through untouched. Retired patterns are
+ * tried too, so searching an old code finds the colour instead of nothing.
  */
 export function searchTermFor(
   scheme: ShadeCodeScheme | null | undefined,
   input: string,
 ): string {
-  return decodeShadeCode(scheme, input) ?? input;
+  return decodeShadeCodeAnyScheme(scheme, input)?.code ?? input;
 }
 
 /**

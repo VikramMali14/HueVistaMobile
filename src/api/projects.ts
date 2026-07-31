@@ -46,8 +46,10 @@ export const projectsApi = {
     return apiFetch(`/projects/${encodeURIComponent(id)}/status`).then((d) => projectSchema.parse(d));
   },
 
-  /** Kick off async SAM 2 segmentation. AUTO consumes an auto-mask credit (402
-   *  AUTO_MASK_UNAVAILABLE when the plan has none); MANUAL is free. */
+  /** Kick off async SAM 2 segmentation. Neither mode costs anything here: the
+   *  project's credit was taken when the project was created, so this run — and
+   *  any retry of it — is already paid for. AUTO detects walls with AI, MANUAL
+   *  stops after the clean-up so they can be marked by hand. */
   segment(id: string, maskMode: 'AUTO' | 'MANUAL' = 'AUTO'): Promise<Project> {
     return apiFetch(`/projects/${encodeURIComponent(id)}/segment`, {
       method: 'POST',
@@ -59,8 +61,8 @@ export const projectsApi = {
    * Mark one wall by hand: SAM 2 segments the surface under a tap, at normalized
    * (0–1) coordinates, and returns it as a new region.
    *
-   * This is the free path — no auto-mask credit is consumed — so it is what the
-   * app offers when AI wall-detection is unavailable on the plan.
+   * Covered by the project's own credit like every other step inside it, so a
+   * customer can mark as many walls as the room has without a second charge.
    */
   segmentPoint(id: string, x: number, y: number, label?: string): Promise<Region> {
     return apiFetch(`/projects/${encodeURIComponent(id)}/segment/point`, {

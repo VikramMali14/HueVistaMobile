@@ -70,8 +70,11 @@ export const projectSchema = z.object({
   readOnlyReason: z.string().nullish(),
   /** When this project's paid validity runs out; null when it has no window. */
   accessExpiresAt: z.string().nullish(),
-  /** What reopening a lapsed project costs, in paise. */
-  reopenPricePaise: z.number().default(0),
+  /** What reopening this project costs, in POINTS. Only meaningful while readOnly.
+   *  The matching money price is on the purchase options, not here — this one
+   *  travels with the project because the banner needs it before anything else
+   *  has loaded. */
+  reopenPricePoints: z.number().default(0),
 });
 export type Project = z.infer<typeof projectSchema>;
 

@@ -26,7 +26,7 @@ export { recommendationResponseSchema } from './recommendationSchemas';
 export type { RecommendationResponse, ColorCombo, MatchedShade } from './recommendationSchemas';
 export { accessCodesApi } from './accessCodes';
 export { accountApi } from './account';
-export { billingApi, projectPurchaseOptionsSchema, formatPaise } from './billing';
+export { billingApi, projectPurchaseOptionsSchema, formatPaise, formatPoints } from './billing';
 export type { ProjectPurchaseOptions } from './billing';
 export {
   accessCodeResponseSchema,
@@ -34,6 +34,7 @@ export {
   customerEntitlementSchema,
   assignedProductsSchema,
   shadeCodeSchemeSchema,
+  retiredShadeCodeSchemeSchema,
   shopProductSchema,
 } from './accountSchemas';
 export type {
@@ -42,6 +43,7 @@ export type {
   CustomerEntitlement,
   AssignedProducts,
   ShadeCodeScheme,
+  RetiredShadeCodeScheme,
   ShopProduct,
 } from './accountSchemas';
 export {
