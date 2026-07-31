@@ -61,21 +61,21 @@ describe('project access state', () => {
   it('defaults an open project to writable with no window', () => {
     const p = projectSchema.parse({ id: 'p1', status: 'SEGMENTED' });
     expect(p.readOnly).toBe(false);
-    expect(p.reopenPricePaise).toBe(0);
+    expect(p.reopenPricePoints).toBe(0);
     expect(p.accessExpiresAt).toBeUndefined();
   });
 
-  it('carries the view-only reason and reopen price', () => {
+  it('carries the view-only reason and the reopen price in points', () => {
     const p = projectSchema.parse({
       id: 'p1',
       status: 'SEGMENTED',
       readOnly: true,
       readOnlyReason: 'This room’s validity ran out.',
       accessExpiresAt: '2026-07-20T10:00:00',
-      reopenPricePaise: 5000,
+      reopenPricePoints: 9,
     });
     expect(p.readOnly).toBe(true);
-    expect(p.reopenPricePaise).toBe(5000);
+    expect(p.reopenPricePoints).toBe(9);
   });
 
   it('reads a customer room off the summary projection', () => {

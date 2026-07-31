@@ -3,7 +3,7 @@ export { apiFetch, setAuthHooks } from './client';
 export type { RequestOptions, AuthHooks } from './client';
 export { ApiError, userMessage, hasCode, API_CODES } from './errors';
 export type { ApiCode } from './errors';
-export { authApi } from './auth';
+export { authApi, verificationApi } from './auth';
 export type { LoginBody, RegisterBody } from './auth';
 export * from './schemas';
 export { shadesApi } from './shades';
@@ -26,14 +26,79 @@ export { recommendationResponseSchema } from './recommendationSchemas';
 export type { RecommendationResponse, ColorCombo, MatchedShade } from './recommendationSchemas';
 export { accessCodesApi } from './accessCodes';
 export { accountApi } from './account';
-export { billingApi, projectPurchaseOptionsSchema, formatPaise } from './billing';
-export type { ProjectPurchaseOptions } from './billing';
+export {
+  billingApi,
+  projectPurchaseOptionsSchema,
+  subscriptionSchema,
+  rewardPointsSchema,
+  pdfAllowanceSchema,
+  formatPaise,
+  formatPoints,
+} from './billing';
+export type {
+  ProjectPurchaseOptions,
+  Subscription,
+  RewardPoints,
+  PdfAllowance,
+} from './billing';
+export { orgApi } from './org';
+export {
+  orgSchema,
+  myAccessSchema,
+  networkNodeSchema,
+  networkReportSchema,
+  retailerBrandOptionSchema,
+  retailerFeatureOptionSchema,
+} from './orgSchemas';
+export type {
+  Org,
+  OrgType,
+  MyAccess,
+  NetworkNode,
+  NetworkReport,
+  RetailerBrandOption,
+  RetailerFeatureOption,
+} from './orgSchemas';
+export { retailApi } from './retail';
+export {
+  shopAccessCodeSchema,
+  projectGrantSchema,
+  retailerComboSchema,
+  storeLinkSchema,
+  walletSummarySchema,
+} from './retailSchemas';
+export type {
+  ShopAccessCode,
+  ProjectGrant,
+  RetailerCombo,
+  StoreLink,
+  WalletSummary,
+} from './retailSchemas';
+export { painterApi, jobsApi } from './painter';
+export {
+  paintJobSchema,
+  painterProfileSchema,
+  painterRetailerLinkSchema,
+  painterInvitationSchema,
+  PAINT_JOB_STATUSES,
+  decimal,
+} from './painterSchemas';
+export type {
+  PaintJob,
+  PaintJobStatus,
+  PainterProfile,
+  PainterRetailerLink,
+  PainterInvitation,
+} from './painterSchemas';
+export { supportApi } from './support';
+export type { SupportConversation, SupportConversationSummary, SupportMessage } from './support';
 export {
   accessCodeResponseSchema,
   redeemAccountResponseSchema,
   customerEntitlementSchema,
   assignedProductsSchema,
   shadeCodeSchemeSchema,
+  retiredShadeCodeSchemeSchema,
   shopProductSchema,
 } from './accountSchemas';
 export type {
@@ -42,6 +107,7 @@ export type {
   CustomerEntitlement,
   AssignedProducts,
   ShadeCodeScheme,
+  RetiredShadeCodeScheme,
   ShopProduct,
 } from './accountSchemas';
 export {

@@ -85,18 +85,29 @@ describe('redeemAccountResponseSchema', () => {
 });
 
 describe('projectPurchaseOptionsSchema', () => {
-  it('parses both ends of the price', () => {
+  it('parses a project priced on both rails', () => {
     const o = projectPurchaseOptionsSchema.parse({
       subscribed: true,
-      projectPricePaise: 5000,
-      subscribedProjectPricePaise: 5000,
-      unsubscribedProjectPricePaise: 9900,
-      reopenPricePaise: 5000,
+      pricingPlan: 'STARTER',
+      projectPricePoints: 65,
+      projectPricePaise: 6500,
+      reopenPricePoints: 9,
+      reopenPricePaise: 1000,
+      pointsBalance: 120,
       validDays: 10,
-      currency: 'INR',
       availableCredits: 1,
     });
-    expect(o.unsubscribedProjectPricePaise).toBe(9900);
+    expect(o.pricingPlan).toBe('STARTER');
+    expect(o.projectPricePoints).toBe(65);
+    expect(o.reopenPricePoints).toBe(9);
+    expect(o.pointsBalance).toBe(120);
     expect(o.availableCredits).toBe(1);
+  });
+
+  it('reads an account with no plan and no points as all-zero rather than throwing', () => {
+    const o = projectPurchaseOptionsSchema.parse({});
+    expect(o.subscribed).toBe(false);
+    expect(o.pricingPlan).toBe('FREE');
+    expect(o.pointsBalance).toBe(0);
   });
 });

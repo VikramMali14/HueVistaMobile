@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   Share,
   Linking,
+  Alert,
   type GestureResponderEvent,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as MediaLibrary from 'expo-media-library';
 import { captureRef } from 'react-native-view-shot';
-import { Text, Button, Card, StatusPill } from '../../src/components';
+import { Text, Button, Card, StatusPill, Input, SheetModal } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
 import {
@@ -28,6 +29,7 @@ import {
   API_CODES,
   hasCode,
   formatPaise,
+  formatPoints,
   webUrl,
   RecommendationResponse,
 } from '../../src/api';
@@ -37,7 +39,11 @@ import { summaryToShade, Shade } from '../../src/shades/types';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
 import { shadeDisplay } from '../../src/shades/shadeCodes';
 import { RecommendationsSheet } from '../../src/projects/RecommendationsSheet';
-import { useRequestMoreProjects, useShadeCodeScheme } from '../../src/account/queries';
+import {
+  useProjectPurchaseOptions,
+  useRequestMoreProjects,
+  useShadeCodeScheme,
+} from '../../src/account/queries';
 import { expiryText } from '../../src/account/EntitlementCard';
 
 type Applied = { hex: string; code?: string };
@@ -78,7 +84,15 @@ export default function ProjectEditor() {
    * out, rather than as a failure on every swatch the user taps.
    */
   const readOnly = project?.readOnly ?? false;
-  const reopenPaise = project?.reopenPricePaise ?? 0;
+  /** What a reopen costs in points — the shop rail, and the cheaper one. */
+  const reopenPoints = project?.reopenPricePoints ?? 0;
+  /**
+   * The same reopen paid by card. Flat, unlike a new project, so it does not move
+   * with the plan. Only a shop account can read this (points are a shop currency,
+   * so the endpoint is retailer-only) — a customer simply gets no second price,
+   * which is right: their way back in is their shop, not a checkout.
+   */
+  const reopenPaise = useProjectPurchaseOptions().data?.reopenPricePaise ?? 0;
 
   // Marking walls by hand: free on every plan, and the way through when AI
   // wall-detection isn't available. A tap on the photo segments that surface.
@@ -96,6 +110,9 @@ export default function ProjectEditor() {
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const [savingImg, setSavingImg] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
@@ -136,22 +153,89 @@ export default function ProjectEditor() {
     }
   }
 
+  /**
+   * Claude's palettes for this exact room. Included in the project now rather
+   * than charged per ask, and sized to the room: a photo with one wall marked
+   * comes back with one colour, not three the user has nowhere to put. Still
+   * fetched only on request, because it is a real model call and a slow one.
+   */
   async function openRecommendations() {
     setRecsOpen(true);
-    if (recs || recsLoading) return; // fetch once — it consumes an AI generation
+    if (recs || recsLoading) return; // one call per visit — it takes a few seconds
     setRecsLoading(true);
     setRecsError(null);
     try {
       setRecs(await recommendationsApi.get(id));
     } catch (err) {
       if (err instanceof ApiError && err.status === 402) {
-        setRecsError('You’ve used your AI suggestions on this plan.');
+        // The only 402 left here: the project's own access window has closed.
+        setRecsError('This room’s access has ended. Reopen it to get suggestions.');
       } else {
         setRecsError(err instanceof ApiError ? err.message : 'Couldn’t get suggestions. Please try again.');
       }
     } finally {
       setRecsLoading(false);
     }
+  }
+
+  /**
+   * Withdraw the public link.
+   *
+   * Sharing is the one action here that hands a stranger the ability to repaint
+   * the room, so the person who sent it needs a way to take that back without
+   * deleting the project itself.
+   */
+  async function doRevokeShare() {
+    setActionError(null);
+    setActionMsg(null);
+    try {
+      await projectsApi.revokeShare(id);
+      await queryClient.invalidateQueries({ queryKey: ['projects', id] });
+      setActionMsg('Link withdrawn — the old address no longer opens.');
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Couldn’t withdraw that link.');
+    }
+  }
+
+  /** Rename the room. The name is the only thing about it a user can edit here. */
+  async function doRename() {
+    const name = renameValue.trim();
+    if (!name) return;
+    setRenaming(true);
+    setActionError(null);
+    try {
+      await projectsApi.update(id, { name });
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setRenameOpen(false);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Couldn’t rename this room.');
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  /** Delete, with the cost named first — the room and its colours both go. */
+  function confirmDelete() {
+    Alert.alert(
+      'Delete this room?',
+      'The photo and every colour you applied are removed for good. This cannot be undone.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await projectsApi.remove(id);
+              await queryClient.invalidateQueries({ queryKey: ['projects'] });
+              router.back();
+            } catch (err) {
+              setActionError(err instanceof ApiError ? err.message : 'Couldn’t delete this room.');
+            }
+          },
+        },
+      ],
+    );
   }
 
   async function doShare() {
@@ -162,6 +246,7 @@ export default function ProjectEditor() {
       // 10 days is the ceiling: a share link hands over the same repaint
       // capability a walk-in code does, so the two expire on the same clock.
       const res = await projectsApi.share(id, { days: 10 });
+      await queryClient.invalidateQueries({ queryKey: ['projects', id] });
       await Share.share({ message: `See my room in HueVista: ${res.shareUrl}`, url: res.shareUrl });
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Couldn’t create a share link.');
@@ -193,10 +278,11 @@ export default function ProjectEditor() {
   /**
    * Start wall detection.
    *
-   * AUTO runs AI detection and spends an auto-mask credit; MANUAL stops after
-   * the compulsory photo clean-up so the walls are marked by hand — free, and
-   * unlimited on every tier. When AUTO comes back 402 AUTO_MASK_UNAVAILABLE the
-   * user is steered to MANUAL rather than to a payment they may not need.
+   * AUTO runs AI detection; MANUAL stops after the photo clean-up so the walls
+   * are marked by hand. Neither costs anything here any more: the project's
+   * credit was taken when the project was CREATED, so by the time this runs the
+   * work is already paid for — and a retry after a failure is free too. What
+   * separates the two modes now is the result, not the price.
    */
   async function startSegmentation(mode: MaskMode = 'AUTO') {
     setStarting(true);
@@ -207,21 +293,14 @@ export default function ProjectEditor() {
       setMarking(mode === 'MANUAL');
       await queryClient.invalidateQueries({ queryKey: ['projects', id] });
     } catch (err) {
-      if (hasCode(err, API_CODES.AUTO_MASK_UNAVAILABLE)) {
-        setBlocked({
-          code: API_CODES.AUTO_MASK_UNAVAILABLE,
-          message:
-            (err as ApiError).message ||
-            'AI wall detection isn’t available on this plan right now.',
-        });
-      } else if (hasCode(err, API_CODES.ASK_RETAILER)) {
+      if (hasCode(err, API_CODES.ASK_RETAILER)) {
         setBlocked({ code: API_CODES.ASK_RETAILER, message: (err as ApiError).message });
       } else if (hasCode(err, API_CODES.SUBSCRIPTION_REQUIRED)) {
         setBlocked({ code: API_CODES.SUBSCRIPTION_REQUIRED, message: (err as ApiError).message });
-      } else if (hasCode(err, API_CODES.IMAGE_LIMIT_REACHED)) {
-        setBlocked({ code: API_CODES.IMAGE_LIMIT_REACHED, message: (err as ApiError).message });
+      } else if (hasCode(err, API_CODES.PROJECT_LIMIT_REACHED)) {
+        setBlocked({ code: API_CODES.PROJECT_LIMIT_REACHED, message: (err as ApiError).message });
       } else if (err instanceof ApiError && err.status === 402) {
-        setSegmentError(err.message || 'This plan has no wall-detection credits left.');
+        setSegmentError(err.message || 'This room can’t be worked on right now.');
       } else if (err instanceof ApiError && err.status === 409) {
         await queryClient.invalidateQueries({ queryKey: ['projects', id] }); // already running
       } else {
@@ -293,9 +372,43 @@ export default function ProjectEditor() {
         {status ? <StatusPill label={status} tone={status === 'FAILED' ? 'expired' : status === 'SEGMENTED' ? 'done' : 'progress'} /> : null}
       </View>
 
-      <Text variant="title" numberOfLines={1}>
-        {project?.name ?? 'Room'}
-      </Text>
+      <View style={styles.titleRow}>
+        <Text variant="title" numberOfLines={1} style={styles.titleText}>
+          {project?.name ?? 'Room'}
+        </Text>
+        {!readOnly ? (
+          <View style={styles.titleActions}>
+            <Pressable
+              onPress={() => {
+                setRenameValue(project?.name ?? '');
+                setRenameOpen(true);
+              }}
+              hitSlop={10}
+            >
+              <Ionicons name="pencil" size={18} color={colors.fgSoft} />
+            </Pressable>
+            <Pressable onPress={confirmDelete} hitSlop={10}>
+              <Ionicons name="trash-outline" size={18} color={colors.fgSoft} />
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+
+      {/* A live share link is a capability someone else is holding, so it is
+          stated where the owner can see it — and withdrawn from the same place. */}
+      {project?.hasShareLink && !readOnly ? (
+        <View style={styles.shareState}>
+          <Text variant="caption" color={colors.fgSoft}>
+            Shared link is live
+            {project.shareExpiresAt ? ` · ends ${expiryText(project.shareExpiresAt)}` : ''}
+          </Text>
+          <Pressable onPress={doRevokeShare} hitSlop={8}>
+            <Text variant="label" color={colors.warning}>
+              Withdraw
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* View-only. Said once, above the canvas, with the one action that fixes
           it — not as a failure on every swatch. */}
@@ -308,9 +421,14 @@ export default function ProjectEditor() {
             {project?.readOnlyReason ??
               'This project is view-only — you can still see the colours that were last applied.'}
           </Text>
-          {reopenPaise > 0 ? (
+          {reopenPoints > 0 ? (
             <View style={styles.reopen}>
-              <Text variant="body">Reopening it costs {formatPaise(reopenPaise)}.</Text>
+              {/* Both rails, when both are open to this account: points are the
+                  cheaper one, so they lead and the card price sits beside them. */}
+              <Text variant="body">
+                Reopening it costs {formatPoints(reopenPoints)}
+                {reopenPaise > 0 ? `, or ${formatPaise(reopenPaise)} by card` : ''}.
+              </Text>
               {webUrl('/dashboard') ? (
                 <Button
                   label="Reopen on the website"
@@ -320,7 +438,7 @@ export default function ProjectEditor() {
                 />
               ) : (
                 <Text variant="caption">
-                  Payments run on the HueVista website — open your dashboard there to reopen this room.
+                  Reopening runs on the HueVista website — open your dashboard there to reopen this room.
                 </Text>
               )}
             </View>
@@ -378,25 +496,14 @@ export default function ProjectEditor() {
           <Text variant="label" color={colors.warning}>
             {blocked.code === API_CODES.ASK_RETAILER
               ? 'Your shop adds projects'
-              : blocked.code === API_CODES.AUTO_MASK_UNAVAILABLE
-                ? 'AI wall detection unavailable'
-                : blocked.code === API_CODES.IMAGE_LIMIT_REACHED
-                  ? 'Image allowance spent'
-                  : 'Subscription needed'}
+              : blocked.code === API_CODES.PROJECT_LIMIT_REACHED
+                ? 'This month’s projects are used up'
+                : 'Subscription needed'}
           </Text>
           <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
             {blocked.message}
           </Text>
-          {blocked.code === API_CODES.AUTO_MASK_UNAVAILABLE ? (
-            <Button
-              label="Mark the walls myself (free)"
-              variant="secondary"
-              fullWidth
-              style={styles.gateAction}
-              loading={starting}
-              onPress={() => startSegmentation('MANUAL')}
-            />
-          ) : blocked.code === API_CODES.ASK_RETAILER ? (
+          {blocked.code === API_CODES.ASK_RETAILER ? (
             askRetailer.isSuccess ? (
               <Text variant="label" color={colors.success} style={styles.gateAction}>
                 Asked ✓ — your shop has been notified.
@@ -489,7 +596,7 @@ export default function ProjectEditor() {
               label="Suggest"
               variant="secondary"
               // Suggestions exist to be applied; on a view-only room there is
-              // nothing to apply them to, and the call is quota-billed.
+              // nothing to apply them to, and the backend refuses anyway.
               disabled={readOnly}
               icon={<Ionicons name="sparkles" size={16} color={colors.fg} />}
               onPress={openRecommendations}
@@ -611,6 +718,25 @@ export default function ProjectEditor() {
           setRecsOpen(false);
         }}
       />
+
+      <SheetModal visible={renameOpen} onClose={() => setRenameOpen(false)} title="Rename this room">
+        <View style={styles.renameSheet}>
+          <Input
+            label="Name"
+            value={renameValue}
+            onChangeText={setRenameValue}
+            placeholder="Living room, front elevation…"
+            autoCapitalize="sentences"
+          />
+          <Button
+            label="Save"
+            fullWidth
+            loading={renaming}
+            disabled={!renameValue.trim()}
+            onPress={doRename}
+          />
+        </View>
+      </SheetModal>
     </ScrollView>
   );
 }
@@ -619,6 +745,11 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  titleText: { flexShrink: 1 },
+  titleActions: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+  shareState: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  renameSheet: { gap: spacing.md },
   canvasFrame: {
     borderRadius: radius.card,
     overflow: 'hidden',

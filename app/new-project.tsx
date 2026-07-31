@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator, Linking } from 'react-native';
+import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Screen, Text, Button, Card } from '../src/components';
 import { colors, spacing, radius } from '../src/theme';
-import { imagesApi, projectsApi, ApiError, API_CODES, hasCode, formatPaise, webUrl } from '../src/api';
+import { imagesApi, projectsApi, ApiError, API_CODES, hasCode } from '../src/api';
 import {
   useMyEntitlement,
   useProjectPurchaseOptions,
@@ -82,10 +82,16 @@ export default function NewProject() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         setError("That doesn't look like a room or building. Try a photo of the walls you want to paint.");
+      } else if (hasCode(err, API_CODES.VERIFICATION_REQUIRED)) {
+        // Not a dead end: the verify screen is the way through, so go there
+        // rather than printing a refusal the user cannot act on.
+        router.push('/verify');
+        setPhase('idle');
+        return;
       } else if (
         hasCode(err, API_CODES.ASK_RETAILER) ||
         hasCode(err, API_CODES.SUBSCRIPTION_REQUIRED) ||
-        hasCode(err, API_CODES.IMAGE_LIMIT_REACHED)
+        hasCode(err, API_CODES.PROJECT_LIMIT_REACHED)
       ) {
         setBlocked({ code: (err as ApiError).code as string, message: (err as ApiError).message });
       } else if (err instanceof ApiError && err.status === 400) {
@@ -164,23 +170,25 @@ export default function NewProject() {
                 onPress={() => askRetailer.mutate()}
               />
             )
-          ) : !entitlement && purchase ? (
+          ) : !entitlement ? (
+            /* No shop manages this account, so there is no allowance to ask about
+               — and no purchase to offer either. Everything chargeable is paid in
+               points now, and points are a shop's currency: a customer holds none
+               and cannot buy any. Quoting a price they would be refused at is
+               worse than quoting none, so the two honest routes are named
+               instead — a shop's code, or buying a visualisation at its counter. */
             <View style={styles.gateAction}>
               <Text variant="body">
-                Another project costs {formatPaise(purchase.projectPricePaise)} and stays open for{' '}
-                {purchase.validDays} days.
+                Redeem a code from your paint shop to start, or ask them for their in-store
+                link to buy a visualisation there.
               </Text>
-              {webUrl('/dashboard') ? (
-                <Button
-                  label="Buy on the website"
-                  variant="secondary"
-                  fullWidth
-                  style={styles.gateAction}
-                  onPress={() => Linking.openURL(webUrl('/dashboard') as string).catch(() => {})}
-                />
-              ) : (
-                <Text variant="caption">Payments run on the HueVista website.</Text>
-              )}
+              <Button
+                label="Link a paint shop"
+                variant="secondary"
+                fullWidth
+                style={styles.gateAction}
+                onPress={() => router.push('/account')}
+              />
             </View>
           ) : null}
         </Card>

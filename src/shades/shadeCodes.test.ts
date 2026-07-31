@@ -1,4 +1,11 @@
-import { decodeShadeCode, encodeShadeCode, hasScheme, searchTermFor, shadeDisplay } from './shadeCodes';
+import {
+  decodeShadeCode,
+  decodeShadeCodeAnyScheme,
+  encodeShadeCode,
+  hasScheme,
+  searchTermFor,
+  shadeDisplay,
+} from './shadeCodes';
 import type { ShadeCodeScheme } from '../api/accountSchemas';
 
 const scheme = (over: Partial<ShadeCodeScheme> = {}): ShadeCodeScheme => ({
@@ -6,6 +13,7 @@ const scheme = (over: Partial<ShadeCodeScheme> = {}): ShadeCodeScheme => ({
   infix: '',
   suffix: '',
   showNames: true,
+  retired: [],
   ...over,
 });
 
@@ -95,10 +103,59 @@ describe('decodeShadeCode', () => {
   });
 });
 
+describe('decodeShadeCodeAnyScheme', () => {
+  const withHistory = scheme({
+    prefix: 'AB',
+    infix: 'XY',
+    suffix: 'CD',
+    retired: [
+      { prefix: 'ZZ', infix: '', suffix: '', retiredAt: '2026-06-01T00:00:00' },
+      { prefix: 'QQ', infix: '', suffix: '', retiredAt: '2025-01-01T00:00:00' },
+    ],
+  });
+
+  it('reads a current code and reports no retired pattern', () => {
+    expect(decodeShadeCodeAnyScheme(withHistory, 'ABL1XY24CD')).toEqual({ code: 'L124', via: null });
+  });
+
+  it('still reads a code printed under a pattern the shop has dropped', () => {
+    const found = decodeShadeCodeAnyScheme(withHistory, 'ZZL124');
+    expect(found?.code).toBe('L124');
+    expect(found?.via?.prefix).toBe('ZZ');
+  });
+
+  it('prefers the newest retired pattern when two could both read the code', () => {
+    // Both patterns are bare prefixes, so "QQL124" is readable by the older one
+    // only — but a code the newer one can also read must resolve to the newer.
+    const ambiguous = scheme({
+      prefix: 'AB',
+      retired: [
+        { prefix: 'Z', infix: '', suffix: '', retiredAt: '2026-06-01T00:00:00' },
+        { prefix: '', infix: '', suffix: '', retiredAt: '2025-01-01T00:00:00' },
+      ],
+    });
+    expect(decodeShadeCodeAnyScheme(ambiguous, 'ZL124')?.code).toBe('L124');
+  });
+
+  it('is null when no pattern, live or retired, can read it', () => {
+    expect(decodeShadeCodeAnyScheme(withHistory, 'WWL124')).toBeNull();
+    expect(decodeShadeCodeAnyScheme(scheme(), 'L124')).toBeNull();
+    expect(decodeShadeCodeAnyScheme(null, 'L124')).toBeNull();
+  });
+});
+
 describe('searchTermFor', () => {
   it('sends the real code when the customer types the one they can see', () => {
     const s = scheme({ prefix: 'AB', infix: 'XY', suffix: 'CD' });
     expect(searchTermFor(s, 'ABL1XY24CD')).toBe('L124');
+  });
+
+  it('finds a colour from a code printed under an older pattern', () => {
+    const s = scheme({
+      prefix: 'AB',
+      retired: [{ prefix: 'ZZ', infix: '', suffix: '', retiredAt: '2026-06-01T00:00:00' }],
+    });
+    expect(searchTermFor(s, 'ZZL124')).toBe('L124');
   });
 
   it('passes a name or a fragment through untouched', () => {

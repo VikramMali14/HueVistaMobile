@@ -1,5 +1,13 @@
 import { apiFetch } from './client';
-import { authResponseSchema, userProfileSchema, messageSchema, AuthResponse, UserProfile } from './schemas';
+import {
+  authResponseSchema,
+  userProfileSchema,
+  messageSchema,
+  verificationStatusSchema,
+  AuthResponse,
+  UserProfile,
+  VerificationStatus,
+} from './schemas';
 
 /** POST /api/auth/login — email + password. */
 export interface LoginBody {
@@ -57,5 +65,70 @@ export const authApi = {
   forgotPassword(email: string): Promise<string> {
     return apiFetch('/auth/forgot-password', { method: 'POST', json: { email }, skipAuth: true })
       .then((d) => messageSchema.parse(d).message);
+  },
+
+  /** Edit the account's own details. PATCH — only the named fields change. */
+  updateProfile(body: { name?: string; phoneNumber?: string }): Promise<UserProfile> {
+    return apiFetch('/auth/profile', { method: 'PATCH', json: body }).then((d) =>
+      userProfileSchema.parse(d),
+    );
+  },
+
+  changePassword(currentPassword: string, newPassword: string): Promise<string> {
+    return apiFetch('/auth/change-password', {
+      method: 'POST',
+      json: { currentPassword, newPassword },
+    }).then((d) => messageSchema.parse(d).message);
+  },
+
+  /**
+   * Delete the account for good.
+   *
+   * Irreversible, so every caller confirms first — the API itself asks nothing
+   * beyond a valid session.
+   */
+  deleteAccount(): Promise<void> {
+    return apiFetch('/auth/account', { method: 'DELETE' }).then(() => undefined);
+  },
+};
+
+/**
+ * E-mail and phone verification.
+ *
+ * The backend gates project creation behind these when the feature is on, and
+ * says so with a `VERIFICATION_REQUIRED` refusal — which is what sends the app to
+ * the verify screen rather than leaving the user at a dead end.
+ *
+ * Verified against `VerificationController`.
+ */
+export const verificationApi = {
+  /** Send a code to the account's e-mail address. */
+  sendEmail(): Promise<VerificationStatus> {
+    return apiFetch('/auth/verify/email/send', { method: 'POST' }).then((d) =>
+      verificationStatusSchema.parse(d),
+    );
+  },
+
+  /** Confirm the e-mailed code; returns the profile with `emailVerified` set. */
+  confirmEmail(code: string): Promise<UserProfile> {
+    return apiFetch('/auth/verify/email/confirm', {
+      method: 'POST',
+      json: { code: code.trim() },
+    }).then((d) => userProfileSchema.parse(d));
+  },
+
+  /** Send an SMS code. A number may be supplied to set it at the same time. */
+  sendPhone(phoneNumber?: string): Promise<VerificationStatus> {
+    return apiFetch('/auth/verify/phone/send', {
+      method: 'POST',
+      json: phoneNumber ? { phoneNumber } : {},
+    }).then((d) => verificationStatusSchema.parse(d));
+  },
+
+  confirmPhone(code: string): Promise<UserProfile> {
+    return apiFetch('/auth/verify/phone/confirm', {
+      method: 'POST',
+      json: { code: code.trim() },
+    }).then((d) => userProfileSchema.parse(d));
   },
 };

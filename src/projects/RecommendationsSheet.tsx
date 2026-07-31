@@ -1,10 +1,12 @@
 import { View, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { SheetModal, Text, Card } from '../components';
 import { colors, spacing, radius } from '../theme';
-import { RecommendationResponse, MatchedShade, ShadeCodeScheme } from '../api';
+import { RecommendationResponse, MatchedShade, ShadeCodeScheme, retailApi } from '../api';
 import { Shade } from '../shades/types';
 import { shadeDisplay } from '../shades/shadeCodes';
 import { useShadeCodeScheme } from '../account/queries';
+import { useSession } from '../auth';
 
 interface Props {
   visible: boolean;
@@ -61,8 +63,26 @@ function Swatch({
  *  the selected wall with it. */
 export function RecommendationsSheet({ visible, onClose, loading, error, data, onApply }: Props) {
   const scheme = useShadeCodeScheme().data;
+  const { status } = useSession();
+
+  /**
+   * The shop's own saved palettes, offered beside Claude's.
+   *
+   * These are free, instant and chosen by the people who sell the paint, so they
+   * lead when they exist. Only fetched while the sheet is open — a customer with
+   * no shop gets a 403 or an empty list, which reads the same either way.
+   */
+  const combos = useQuery({
+    queryKey: ['retail', 'my-combos'],
+    queryFn: () => retailApi.myCombos(),
+    enabled: visible && status === 'authenticated',
+    staleTime: 30 * 60_000,
+    retry: false,
+  });
+  const shopCombos = combos.data ?? [];
+
   return (
-    <SheetModal visible={visible} onClose={onClose} title="AI palette ideas">
+    <SheetModal visible={visible} onClose={onClose} title="Palette ideas">
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -79,6 +99,44 @@ export function RecommendationsSheet({ visible, onClose, loading, error, data, o
           <Text variant="bodySoft" style={styles.hint}>
             Tap a colour to paint the selected wall.
           </Text>
+
+          {/* The shop's own combinations first — chosen by the people selling the
+              paint, and already in their catalogue. */}
+          {shopCombos.length > 0 ? (
+            <>
+              <Text variant="label" style={styles.sectionHead}>
+                From your shop
+              </Text>
+              {shopCombos.map((combo) => (
+                <Card key={combo.id} style={styles.combo}>
+                  <Text variant="heading">{combo.name ?? 'Shop palette'}</Text>
+                  <View style={styles.swatchRow}>
+                    {combo.shades.slice(0, 3).map((s, j) =>
+                      s.hex ? (
+                        <Swatch
+                          key={`${combo.id}-${j}`}
+                          label={j === 0 ? 'Main' : j === 1 ? 'Accent' : 'Trim'}
+                          shade={{
+                            code: s.code ?? '—',
+                            name: s.name ?? s.code ?? 'Colour',
+                            hex: s.hex,
+                            brand: '',
+                            family: '',
+                          }}
+                          scheme={scheme}
+                          onApply={onApply}
+                        />
+                      ) : null,
+                    )}
+                  </View>
+                </Card>
+              ))}
+              <Text variant="label" style={styles.sectionHead}>
+                From Claude
+              </Text>
+            </>
+          ) : null}
+
           {(data?.combinations ?? []).map((combo, i) => (
             <Card key={`${combo.name ?? 'combo'}-${i}`} style={styles.combo}>
               <Text variant="heading">{combo.name ?? `Palette ${i + 1}`}</Text>
@@ -104,6 +162,7 @@ const styles = StyleSheet.create({
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
   scroll: { maxHeight: 460 },
   hint: { marginBottom: spacing.md },
+  sectionHead: { marginBottom: spacing.sm },
   combo: { marginBottom: spacing.md, gap: spacing.xs },
   rationale: { marginTop: spacing.xs },
   swatchRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },

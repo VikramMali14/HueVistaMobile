@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { accountApi, billingApi, shadesApi } from '../api';
+import { accountApi, authApi, billingApi, shadesApi } from '../api';
 import { useSession } from '../auth';
 import { useShadeBrands } from '../shades/queries';
 
@@ -24,6 +24,24 @@ export function useMyEntitlement() {
     queryFn: () => accountApi.myEntitlement(),
     enabled: status === 'authenticated',
     staleTime: MINUTE,
+  });
+}
+
+/**
+ * The full profile — verification flags, phone, provider.
+ *
+ * The session carries a compact user (id, name, role); this is the rest, and it
+ * is what tells a screen whether e-mail verification is still outstanding or
+ * whether this account even has a password to change.
+ */
+export function useMyProfile() {
+  const { status } = useSession();
+  return useQuery({
+    queryKey: ['account', 'profile'],
+    queryFn: () => authApi.profile(),
+    enabled: status === 'authenticated',
+    staleTime: 5 * MINUTE,
+    retry: false,
   });
 }
 

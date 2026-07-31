@@ -9,7 +9,10 @@ import { colors, spacing, radius } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { API_ORIGIN, accessCodesApi, ApiError, AccessCodeResponse } from '../../src/api';
 import { EntitlementCard } from '../../src/account';
+import { AccountActions } from '../../src/account/AccountPanel';
 import { useAssignedProducts, useShadeCodeScheme } from '../../src/account/queries';
+import { useMyJobsAsCustomer } from '../../src/account/roleQueries';
+import { jobLabel, jobTone } from '../(painter)/jobs';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -23,14 +26,14 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export default function Account() {
-  const { user, role, signOut } = useSession();
+  const { user, role } = useSession();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState(false);
 
   const assigned = useAssignedProducts();
   const scheme = useShadeCodeScheme().data;
   const shopName = assigned.data?.shopName ?? null;
+  const jobs = useMyJobsAsCustomer();
 
   // Link a paint shop (redeem an access code).
   const [linkOpen, setLinkOpen] = useState(false);
@@ -38,15 +41,6 @@ export default function Account() {
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linked, setLinked] = useState<AccessCodeResponse | null>(null);
-
-  async function onSignOut() {
-    setBusy(true);
-    try {
-      await signOut(); // auth gate routes back to /welcome
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function redeem() {
     setLinking(true);
@@ -151,7 +145,25 @@ export default function Account() {
         <Row label="App version" value={String(Constants.expoConfig?.version ?? '0.1.0')} />
       </Card>
 
-      <Button label="Sign out" variant="secondary" fullWidth loading={busy} onPress={onSignOut} />
+      {/* Jobs a shop has scheduled against this customer's rooms. Only rendered
+          when there are any — most customers never have one. */}
+      {(jobs.data ?? []).length > 0 ? (
+        <Card>
+          <Text variant="heading">Your paint jobs</Text>
+          {(jobs.data ?? []).map((j) => (
+            <View key={j.id} style={styles.jobRow}>
+              <Text variant="body" numberOfLines={1} style={styles.jobName}>
+                {j.projectName ?? 'Paint job'}
+              </Text>
+              <StatusPill label={jobLabel(j.status)} tone={jobTone(j.status)} />
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
+      {/* Verification, password, support, sign out and deletion — shared with
+          every other role so none of them can drift apart. */}
+      <AccountActions />
 
       <SheetModal visible={linkOpen} onClose={closeLink} title="Link a paint shop">
         {linked ? (
@@ -230,4 +242,12 @@ const styles = StyleSheet.create({
   rowValue: { flexShrink: 1, textAlign: 'right' },
   divider: { height: 1, backgroundColor: colors.rule },
   sheetBody: { gap: spacing.md },
+  jobRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  jobName: { flexShrink: 1 },
 });
