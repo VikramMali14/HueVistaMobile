@@ -29,11 +29,54 @@ export function webUrl(path: string): string | null {
 
 /**
  * Resolve a backend image URL. The API returns either an absolute URL (S3) or an
- * origin-relative path (`/api/images/files/...`). Both image files and region
- * masks are auth-gated, so load them with the bearer token attached.
+ * origin-relative path (`/api/images/files/...`); both shapes end up absolute so
+ * they can be handed to `fetch` or an <Image>.
+ *
+ * Whether the access token goes with it is a separate question — ask
+ * `isApiOriginUrl`, not this.
  */
 export function resolveImageUrl(url?: string | null): string | null {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
   return `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+/** `scheme://host[:port]`, with the scheme's default port dropped, or null. */
+function originOf(url: string): string | null {
+  const match = /^(https?):\/\/([^/?#]+)/i.exec(url);
+  if (!match) return null;
+  const scheme = match[1].toLowerCase();
+  let authority = match[2].toLowerCase();
+  const defaultPort = scheme === 'https' ? ':443' : ':80';
+  if (authority.endsWith(defaultPort)) {
+    authority = authority.slice(0, -defaultPort.length);
+  }
+  return `${scheme}://${authority}`;
+}
+
+/**
+ * Whether a resolved image URL should be sent WITH the access token.
+ *
+ * The backend returns two shapes for the same picture, and they need opposite
+ * treatment:
+ *
+ *   - `/api/images/files/…` (local storage, the default) is auth-gated — it is
+ *     served by `ImageController` behind the JWT filter, so it needs the bearer.
+ *   - an absolute **S3 presigned** URL already carries its own signature in the
+ *     query string. S3 rejects a request that ALSO sends an `Authorization`
+ *     header with `400 InvalidArgument` — "Only one auth mechanism allowed" —
+ *     so attaching the token there does not merely waste a header, it is the
+ *     difference between the photo loading and a blank canvas.
+ *
+ * So: token only when the URL points at our own API origin. This is the same
+ * distinction the website draws in `src/lib/media.ts`, where an absolute URL on
+ * another origin is loaded as-is and only same-origin `/api/…` paths are routed
+ * through the authenticating BFF proxy.
+ */
+export function isApiOriginUrl(url?: string | null): boolean {
+  if (!url) return false;
+  // Origin-relative paths are resolved onto API_ORIGIN by resolveImageUrl.
+  if (!/^https?:\/\//i.test(url)) return true;
+  const target = originOf(url);
+  return target !== null && target === originOf(API_ORIGIN);
 }

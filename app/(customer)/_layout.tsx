@@ -30,9 +30,9 @@ export default function CustomerTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="visualize"
+        name="studio"
         options={{
-          title: 'Visualize',
+          title: 'Studio',
           tabBarIcon: ({ color, size }) => <Ionicons name="sparkles" size={size} color={color} />,
         }}
       />

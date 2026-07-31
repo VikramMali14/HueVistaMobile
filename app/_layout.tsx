@@ -19,16 +19,20 @@ import type { UserRole } from '../src/api/schemas';
  * the server says which one this account is, and the app mounts that role's tab
  * navigator.
  *
- * ADMIN is deliberately absent — admin tools stay on the web (§2.4) — so an
- * admin signing in here gets the shop counter, which is the closest thing the
- * app has to what they came for and is never a dead end.
+ * ADMIN used to land on `/counter` on the grounds that admin tools stay on the
+ * web (§2.4). That rule still holds — nothing in `(admin)` provisions anything —
+ * but the landing was wrong: it dropped an admin into a RETAILER navigator, so
+ * they got a shop counter that was not their shop (no org, so an empty plan
+ * meter and codes they cannot issue) and, because the retailer tab set has
+ * neither, no dashboard and no studio anywhere in the app. They now get their
+ * own group with both.
  */
 const HOME_FOR_ROLE: Record<UserRole, string> = {
   CUSTOMER: '/home',
   RETAILER: '/counter',
   PAINTER: '/jobs',
   DISTRIBUTOR: '/network',
-  ADMIN: '/counter',
+  ADMIN: '/admin-dashboard',
 };
 
 /**

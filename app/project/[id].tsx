@@ -33,7 +33,7 @@ import {
   webUrl,
   RecommendationResponse,
 } from '../../src/api';
-import { useAuthedSkImage, PaintedPhoto, PaintLayer } from '../../src/engine';
+import { useAuthedSkImageState, PaintedPhoto, PaintLayer } from '../../src/engine';
 import { usePopularShades } from '../../src/shades/queries';
 import { summaryToShade, Shade } from '../../src/shades/types';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
@@ -63,7 +63,7 @@ export default function ProjectEditor() {
   const regions = project?.regions ?? [];
 
   const photoUrl = resolveImageUrl(project?.cleanedImageUrl ?? project?.imageUrl);
-  const photo = useAuthedSkImage(photoUrl);
+  const { image: photo, status: photoStatus, reload: reloadPhoto } = useAuthedSkImageState(photoUrl);
 
   // How this shop labels a colour: its own code pattern, names shown or hidden.
   const scheme = useShadeCodeScheme().data;
@@ -455,7 +455,17 @@ export default function ProjectEditor() {
         style={[styles.canvasFrame, { height: canvasH }]}
       >
         <View ref={shotRef} collapsable={false} style={StyleSheet.absoluteFill}>
-          {isLoading || !photo ? (
+          {/* A photo that fails to load is said out loud. It used to leave the
+              spinner running for good, which reads as "still working" forever
+              rather than as the one thing the user can act on. */}
+          {photoStatus === 'error' ? (
+            <View style={styles.canvasCenter}>
+              <Text variant="body" color={colors.danger} center>
+                Couldn&apos;t load this room&apos;s photo.
+              </Text>
+              <Button label="Try again" variant="secondary" onPress={reloadPhoto} />
+            </View>
+          ) : isLoading || !photo ? (
             <View style={styles.canvasCenter}>
               <ActivityIndicator color={colors.accent} />
             </View>
@@ -757,7 +767,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.rule,
   },
-  canvasCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  canvasCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
   canvasOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.scrim },
   markHint: {
     position: 'absolute',
