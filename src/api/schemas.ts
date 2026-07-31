@@ -52,3 +52,21 @@ export type UserProfile = z.infer<typeof userProfileSchema>;
 
 /** Simple `{ message }` envelope used by forgot/reset/logout endpoints. */
 export const messageSchema = z.object({ message: z.string() });
+
+/**
+ * VerificationStatusResponse — the answer to "send me a code".
+ *
+ * `destination` is already masked by the backend, so it is safe to print: it
+ * tells the user WHICH address or number the code went to without republishing
+ * it in full on a screen someone may be standing over.
+ */
+export const verificationStatusSchema = z.object({
+  /** "EMAIL" or "SMS". */
+  channel: z.string().nullish(),
+  /** Masked address/number the code was sent to, e.g. "v•••@gmail.com". */
+  destination: z.string().nullish(),
+  expiresInSeconds: z.number().default(0),
+  /** How long before another code may be requested. */
+  cooldownSeconds: z.number().default(0),
+});
+export type VerificationStatus = z.infer<typeof verificationStatusSchema>;

@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   Share,
   Linking,
+  Alert,
   type GestureResponderEvent,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as MediaLibrary from 'expo-media-library';
 import { captureRef } from 'react-native-view-shot';
-import { Text, Button, Card, StatusPill } from '../../src/components';
+import { Text, Button, Card, StatusPill, Input, SheetModal } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
 import {
@@ -109,6 +110,9 @@ export default function ProjectEditor() {
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const [savingImg, setSavingImg] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
@@ -174,6 +178,66 @@ export default function ProjectEditor() {
     }
   }
 
+  /**
+   * Withdraw the public link.
+   *
+   * Sharing is the one action here that hands a stranger the ability to repaint
+   * the room, so the person who sent it needs a way to take that back without
+   * deleting the project itself.
+   */
+  async function doRevokeShare() {
+    setActionError(null);
+    setActionMsg(null);
+    try {
+      await projectsApi.revokeShare(id);
+      await queryClient.invalidateQueries({ queryKey: ['projects', id] });
+      setActionMsg('Link withdrawn — the old address no longer opens.');
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Couldn’t withdraw that link.');
+    }
+  }
+
+  /** Rename the room. The name is the only thing about it a user can edit here. */
+  async function doRename() {
+    const name = renameValue.trim();
+    if (!name) return;
+    setRenaming(true);
+    setActionError(null);
+    try {
+      await projectsApi.update(id, { name });
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setRenameOpen(false);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Couldn’t rename this room.');
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  /** Delete, with the cost named first — the room and its colours both go. */
+  function confirmDelete() {
+    Alert.alert(
+      'Delete this room?',
+      'The photo and every colour you applied are removed for good. This cannot be undone.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await projectsApi.remove(id);
+              await queryClient.invalidateQueries({ queryKey: ['projects'] });
+              router.back();
+            } catch (err) {
+              setActionError(err instanceof ApiError ? err.message : 'Couldn’t delete this room.');
+            }
+          },
+        },
+      ],
+    );
+  }
+
   async function doShare() {
     setSharing(true);
     setActionError(null);
@@ -182,6 +246,7 @@ export default function ProjectEditor() {
       // 10 days is the ceiling: a share link hands over the same repaint
       // capability a walk-in code does, so the two expire on the same clock.
       const res = await projectsApi.share(id, { days: 10 });
+      await queryClient.invalidateQueries({ queryKey: ['projects', id] });
       await Share.share({ message: `See my room in HueVista: ${res.shareUrl}`, url: res.shareUrl });
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Couldn’t create a share link.');
@@ -307,9 +372,43 @@ export default function ProjectEditor() {
         {status ? <StatusPill label={status} tone={status === 'FAILED' ? 'expired' : status === 'SEGMENTED' ? 'done' : 'progress'} /> : null}
       </View>
 
-      <Text variant="title" numberOfLines={1}>
-        {project?.name ?? 'Room'}
-      </Text>
+      <View style={styles.titleRow}>
+        <Text variant="title" numberOfLines={1} style={styles.titleText}>
+          {project?.name ?? 'Room'}
+        </Text>
+        {!readOnly ? (
+          <View style={styles.titleActions}>
+            <Pressable
+              onPress={() => {
+                setRenameValue(project?.name ?? '');
+                setRenameOpen(true);
+              }}
+              hitSlop={10}
+            >
+              <Ionicons name="pencil" size={18} color={colors.fgSoft} />
+            </Pressable>
+            <Pressable onPress={confirmDelete} hitSlop={10}>
+              <Ionicons name="trash-outline" size={18} color={colors.fgSoft} />
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+
+      {/* A live share link is a capability someone else is holding, so it is
+          stated where the owner can see it — and withdrawn from the same place. */}
+      {project?.hasShareLink && !readOnly ? (
+        <View style={styles.shareState}>
+          <Text variant="caption" color={colors.fgSoft}>
+            Shared link is live
+            {project.shareExpiresAt ? ` · ends ${expiryText(project.shareExpiresAt)}` : ''}
+          </Text>
+          <Pressable onPress={doRevokeShare} hitSlop={8}>
+            <Text variant="label" color={colors.warning}>
+              Withdraw
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* View-only. Said once, above the canvas, with the one action that fixes
           it — not as a failure on every swatch. */}
@@ -619,6 +718,25 @@ export default function ProjectEditor() {
           setRecsOpen(false);
         }}
       />
+
+      <SheetModal visible={renameOpen} onClose={() => setRenameOpen(false)} title="Rename this room">
+        <View style={styles.renameSheet}>
+          <Input
+            label="Name"
+            value={renameValue}
+            onChangeText={setRenameValue}
+            placeholder="Living room, front elevation…"
+            autoCapitalize="sentences"
+          />
+          <Button
+            label="Save"
+            fullWidth
+            loading={renaming}
+            disabled={!renameValue.trim()}
+            onPress={doRename}
+          />
+        </View>
+      </SheetModal>
     </ScrollView>
   );
 }
@@ -627,6 +745,11 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  titleText: { flexShrink: 1 },
+  titleActions: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+  shareState: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  renameSheet: { gap: spacing.md },
   canvasFrame: {
     borderRadius: radius.card,
     overflow: 'hidden',

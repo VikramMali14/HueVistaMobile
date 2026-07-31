@@ -113,6 +113,20 @@ export const projectsApi = {
       shareResponseSchema.parse(d),
     );
   },
+
+  /**
+   * Withdraw the public link. The URL already sent out answers 404 from here on;
+   * sharing again mints a new token rather than reviving the old one.
+   *
+   * Worth having on its own button because sharing is the one action in the app
+   * that hands a stranger the ability to repaint the room — the person who sent
+   * it needs a way to take that back without deleting the project.
+   */
+  revokeShare(id: string): Promise<void> {
+    return apiFetch(`/projects/${encodeURIComponent(id)}/share`, { method: 'DELETE' }).then(
+      () => undefined,
+    );
+  },
 };
 
 /** Absolute authed URL for a region's mask PNG (fetch with the access token). */

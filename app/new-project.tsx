@@ -82,6 +82,12 @@ export default function NewProject() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         setError("That doesn't look like a room or building. Try a photo of the walls you want to paint.");
+      } else if (hasCode(err, API_CODES.VERIFICATION_REQUIRED)) {
+        // Not a dead end: the verify screen is the way through, so go there
+        // rather than printing a refusal the user cannot act on.
+        router.push('/verify');
+        setPhase('idle');
+        return;
       } else if (
         hasCode(err, API_CODES.ASK_RETAILER) ||
         hasCode(err, API_CODES.SUBSCRIPTION_REQUIRED) ||
