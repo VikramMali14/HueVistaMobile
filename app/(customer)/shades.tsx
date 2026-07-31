@@ -3,7 +3,7 @@ import { ShadeLibrary } from '../../src/shades/ShadeLibrary';
 
 /**
  * Customer shade library. The catalogue UI lives in the shared `ShadeLibrary`;
- * here "Try on wall" hands the shade to the visualizer via a route param.
+ * here "Try on wall" hands the shade to the Studio via a route param.
  */
 export default function Shades() {
   const router = useRouter();
@@ -11,7 +11,7 @@ export default function Shades() {
     <ShadeLibrary
       onTryOnWall={(s) =>
         router.push({
-          pathname: '/visualize',
+          pathname: '/studio',
           params: {
             code: s.shadeCode,
             name: s.name ?? s.shadeCode,

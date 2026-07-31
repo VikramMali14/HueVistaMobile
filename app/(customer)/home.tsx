@@ -104,7 +104,7 @@ export default function Home() {
               key={`${shade.brandSlug ?? ''}-${shade.code}`}
               onPress={() =>
                 router.push({
-                  pathname: '/visualize',
+                  pathname: '/studio',
                   params: {
                     code: shade.code,
                     name: shade.name,

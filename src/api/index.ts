@@ -1,4 +1,4 @@
-export { API_ORIGIN, API_BASE, WEB_ORIGIN, resolveImageUrl, webUrl } from './config';
+export { API_ORIGIN, API_BASE, WEB_ORIGIN, resolveImageUrl, isApiOriginUrl, webUrl } from './config';
 export { apiFetch, setAuthHooks } from './client';
 export type { RequestOptions, AuthHooks } from './client';
 export { ApiError, userMessage, hasCode, API_CODES } from './errors';
@@ -59,6 +59,14 @@ export type {
   RetailerBrandOption,
   RetailerFeatureOption,
 } from './orgSchemas';
+export { adminApi } from './admin';
+export {
+  adminStatsSchema,
+  adminRevenueSchema,
+  adminAiUsageSchema,
+  adminUserSchema,
+} from './adminSchemas';
+export type { AdminStats, AdminRevenue, AdminAiUsage, AdminUser } from './adminSchemas';
 export { retailApi } from './retail';
 export {
   shopAccessCodeSchema,

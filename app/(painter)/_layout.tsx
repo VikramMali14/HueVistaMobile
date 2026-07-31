@@ -5,8 +5,8 @@ import { colors, fonts } from '../../src/theme';
 /**
  * The painter's app: the work, the tool, the account.
  *
- * A painter gets the same visualizer a shop does — they are often the one
- * standing in the room when the customer changes their mind — so Visualize is a
+ * A painter gets the same Studio a customer does — they are often the one
+ * standing in the room when the customer changes their mind — so it is a
  * first-class tab here rather than something reached through a shop.
  */
 export default function PainterTabsLayout() {
@@ -30,6 +30,13 @@ export default function PainterTabsLayout() {
         options={{
           title: 'Jobs',
           tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="painter-studio"
+        options={{
+          title: 'Studio',
+          tabBarIcon: ({ color, size }) => <Ionicons name="sparkles" size={size} color={color} />,
         }}
       />
       <Tabs.Screen

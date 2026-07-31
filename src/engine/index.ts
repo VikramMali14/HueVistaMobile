@@ -5,5 +5,6 @@ export type { PaintedPhotoProps, PaintLayer } from './PaintedPhoto';
 export { RECOLOR_SKSL } from './recolorShader';
 export { RECOLOR_OVERLAY_SKSL } from './overlayShader';
 export { hexToRgb01, luminance01 } from './color';
-export { useAuthedSkImage } from './authedImage';
+export { useAuthedSkImage, useAuthedSkImageState } from './authedImage';
+export type { AuthedSkImageState, ImageLoadStatus } from './authedImage';
 export { resolveImageUrl } from '../api/config';
