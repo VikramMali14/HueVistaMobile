@@ -10,7 +10,7 @@
  *   separate image allowance and auto-mask allowance.
  * - `ASK_RETAILER` — a shop-onboarded customer is out of projects. Their shop
  *   assigned and paid for them, so the app asks the shop rather than selling.
- * - `VERIFICATION_REQUIRED` — e-mail/phone needs verifying first.
+ * - `VERIFICATION_REQUIRED` — the e-mail address needs verifying first.
  */
 export const API_CODES = {
   SUBSCRIPTION_REQUIRED: 'SUBSCRIPTION_REQUIRED',
