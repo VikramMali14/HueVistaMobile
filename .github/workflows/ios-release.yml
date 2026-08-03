@@ -1,0 +1,172 @@
+name: iOS release build
+
+# Builds a release .ipa on a macOS runner. It is **unsigned** — signing an iOS
+# app for a real device needs an Apple Developer account, its certificate and a
+# provisioning profile, none of which live in this repo. What comes out is what
+# you feed to Sideloadly / AltStore (they re-sign with your own Apple ID), or
+# re-sign yourself with Xcode. See the README for the routes to a signed build.
+
+on:
+  # TEMPORARY: `workflow_dispatch` only becomes available once this file is on
+  # the default branch, so the first build has to come from a push. Remove this
+  # trigger once the branch lands on main.
+  push:
+    branches: [claude/android-apk-release-wntcda]
+    paths: ['.github/workflows/ios-release.yml']
+  workflow_dispatch:
+    inputs:
+      api_origin:
+        description: 'Backend origin baked into the build (no trailing slash, no /api)'
+        required: true
+        default: 'https://api.huevista.org'
+      web_origin:
+        description: 'Website origin for Razorpay checkout links (optional)'
+        required: false
+        default: ''
+      build_number:
+        description: 'iOS buildNumber. Leave empty to use the run number.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    name: Archive unsigned .ipa
+    runs-on: macos-26
+    env:
+      EXPO_PUBLIC_API_ORIGIN: ${{ inputs.api_origin || 'https://api.huevista.org' }}
+      EXPO_PUBLIC_WEB_ORIGIN: ${{ inputs.web_origin }}
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stamp the buildNumber
+        run: |
+          node -e '
+            const fs = require("fs");
+            const build = String(process.env.BUILD_NUMBER || process.env.GITHUB_RUN_NUMBER);
+            const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            app.expo.ios = { ...app.expo.ios, buildNumber: build };
+            fs.writeFileSync("app.json", JSON.stringify(app, null, 2) + "\n");
+            console.log("buildNumber", build, "· version", app.expo.version);
+          '
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+
+      - name: Generate the native iOS project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install pods
+        run: pod install
+        working-directory: ios
+
+      # expo-modules-jsi builds itself as an xcframework from a Swift package,
+      # via a nested xcodebuild inside a CocoaPods script phase. Two reasons to
+      # hoist it out of the archive: the archive reports only "PhaseScriptExecution
+      # ... failed" and swallows the reason, and the package compiles under a
+      # narrow band of toolchains. Its Package.swift needs swift-tools 6.2, its
+      # sources use `weak let` (rejected by Swift 6.2 on Xcode 26.0), and the
+      # newest Xcode on the image fails to type-check JavaScriptCodable+Date.swift.
+      # So try each candidate in turn and keep the one that gets through — the
+      # archive then reuses it, and the in-build script phase hits its hash cache.
+      - name: Build the ExpoModulesJSI xcframework
+        env:
+          PODS_ROOT: ${{ github.workspace }}/ios/Pods
+          PLATFORM_NAME: iphoneos
+        run: |
+          set -uo pipefail
+          script=node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
+          built=''
+          attempted=0
+          for app in $(ls -d /Applications/Xcode*.app | sort -V); do
+            # swift lives in the toolchain, not Developer/usr/bin — ask xcrun.
+            version="$(DEVELOPER_DIR="$app/Contents/Developer" xcrun swift --version 2>/dev/null | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)"
+            [ -n "$version" ] || continue
+            major="${version%%.*}"
+            minor="${version#*.}"
+            minor="${minor%%.*}"
+            if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 2 ]; }; then
+              echo "$app — Swift $version, too old to resolve the package"
+              continue
+            fi
+            clean=''
+            [ "$attempted" -eq 0 ] || clean='--clean'
+            attempted=$((attempted + 1))
+            attempt_log="$RUNNER_TEMP/jsi-$(basename "$app").log"
+            # A failed attempt prints a screenful of swift-frontend arguments;
+            # keep it in a file and surface only the diagnostics.
+            if DEVELOPER_DIR="$app/Contents/Developer" "$script" $clean > "$attempt_log" 2>&1; then
+              echo "$app (Swift $version): built ExpoModulesJSI"
+              echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+              built=1
+              break
+            fi
+            echo "$app (Swift $version): cannot compile expo-modules-jsi"
+            grep -E 'error:' "$attempt_log" | sed 's|/Users/runner/work/HueVistaMobile/HueVistaMobile/||' | sort -u | head -5
+          done
+          if [ -z "$built" ]; then
+            echo "No Xcode on this runner can compile expo-modules-jsi ($attempted tried)."
+            exit 1
+          fi
+
+      - name: Archive
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/xcodebuild.log"
+          # Full output to a file: a green run should not dump 10k lines into the
+          # job log, and a red one needs more than the tail GitHub's API hands back.
+          if xcodebuild archive \
+            -workspace ios/HueVista.xcworkspace \
+            -scheme HueVista \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/HueVista.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            > "$log" 2>&1; then
+            echo "Archived."
+            exit 0
+          fi
+          echo '=== error lines ==='
+          grep -nE 'error:|fatal|The following build commands failed' "$log" | tail -40 || echo '(none matched)'
+          echo '=== around the failing script phase ==='
+          grep -n -B5 -A60 'Build ExpoModulesJSI xcframework' "$log" | tail -120 || true
+          echo '=== last 40 lines ==='
+          tail -40 "$log"
+          # Last, so it survives the tail the logs API hands back.
+          echo '=== summary ==='
+          grep -E '\[ExpoModulesJSI\]|error:|xcodebuild: error|The following build commands failed' "$log" \
+            | grep -vE '^note: ' | tail -25
+          exit 1
+
+      - name: Package the .ipa
+        id: ipa
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./app.json').expo.version")"
+          name="huevista-${version}-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}-unsigned.ipa"
+          mkdir -p dist-ipa/Payload
+          cp -R build/HueVista.xcarchive/Products/Applications/HueVista.app dist-ipa/Payload/
+          (cd dist-ipa && zip -qry "$name" Payload && rm -rf Payload)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          ls -lh dist-ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: huevista-ios-ipa
+          path: dist-ipa/*.ipa
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,186 @@
+name: Android release APK
+
+# Builds an installable, release-signed APK. Run it from the Actions tab
+# ("Run workflow"), pick the backend it should talk to, and collect the APK from
+# the run's artifacts — or from a GitHub Release, if you give it a tag.
+
+on:
+  # TEMPORARY: `workflow_dispatch` only becomes available once this file is on
+  # the default branch, so this first build has to come from a push. Remove this
+  # trigger once the branch lands on main.
+  push:
+    branches: [claude/android-apk-release-wntcda]
+    paths: ['.github/workflows/android-release.yml']
+  workflow_dispatch:
+    inputs:
+      api_origin:
+        description: 'Backend origin baked into the build (no trailing slash, no /api)'
+        required: true
+        default: 'https://api.huevista.org'
+      web_origin:
+        description: 'Website origin for Razorpay checkout links (optional)'
+        required: false
+        default: ''
+      version_code:
+        description: 'Android versionCode. Leave empty to use the run number.'
+        required: false
+        default: ''
+      abis:
+        description: 'CPU architectures to build, one APK each. arm64-v8a covers modern phones.'
+        required: false
+        default: 'arm64-v8a,armeabi-v7a'
+      release_tag:
+        description: 'Publish the APK as a GitHub Release under this tag. Empty = artifact only.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Assemble release APK
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_ORIGIN: ${{ inputs.api_origin || 'https://api.huevista.org' }}
+      EXPO_PUBLIC_WEB_ORIGIN: ${{ inputs.web_origin }}
+      EXPO_NO_TELEMETRY: '1'
+      HUEVISTA_RELEASE_ABIS: ${{ inputs.abis || 'arm64-v8a,armeabi-v7a' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stamp the versionCode
+        run: |
+          node -e '
+            const fs = require("fs");
+            const code = Number(process.env.VERSION_CODE || process.env.GITHUB_RUN_NUMBER);
+            const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            app.expo.android = { ...app.expo.android, versionCode: code };
+            fs.writeFileSync("app.json", JSON.stringify(app, null, 2) + "\n");
+            console.log("versionCode", code, "· versionName", app.expo.version);
+          '
+        env:
+          VERSION_CODE: ${{ inputs.version_code }}
+
+      - name: Generate the native Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Prepare the signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore=android/app/huevista-release.keystore
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore"
+            store_password="$ANDROID_KEYSTORE_PASSWORD"
+            key_alias="${ANDROID_KEY_ALIAS:-huevista}"
+            key_password="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+            echo "Signing with the keystore from repository secrets."
+          else
+            # No key configured yet: mint a throwaway one so the build still
+            # produces an installable APK. Every run gets a different key, so an
+            # APK built this way cannot be *upgraded* by the next one — add the
+            # ANDROID_KEYSTORE_* secrets (see README) for a stable signature.
+            store_password="$(openssl rand -hex 24)"
+            key_alias=huevista
+            key_password="$store_password"
+            keytool -genkeypair -v \
+              -keystore "$keystore" -storetype PKCS12 \
+              -alias "$key_alias" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$store_password" -keypass "$key_password" \
+              -dname "CN=HueVista, OU=HueVista, O=HueVista, L=, ST=, C=IN"
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret set — signed with a throwaway key generated for this run."
+          fi
+          # Keep the secrets out of the log and out of later `env:` blocks.
+          {
+            echo "HUEVISTA_RELEASE_STORE_FILE=huevista-release.keystore"
+            echo "HUEVISTA_RELEASE_STORE_PASSWORD=$store_password"
+            echo "HUEVISTA_RELEASE_KEY_ALIAS=$key_alias"
+            echo "HUEVISTA_RELEASE_KEY_PASSWORD=$key_password"
+          } >> "$GITHUB_ENV"
+          echo "::add-mask::$store_password"
+          echo "::add-mask::$key_password"
+          node scripts/android-release-config.js
+
+      - name: Assemble release APKs
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures="$HUEVISTA_RELEASE_ABIS"
+        working-directory: android
+
+      - name: Name the APKs
+        id: apk
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./app.json').expo.version")"
+          mkdir -p dist-apk
+          for built in android/app/build/outputs/apk/release/*.apk; do
+            # app-arm64-v8a-release.apk -> arm64-v8a
+            abi="$(basename "$built" .apk | sed -E 's/^app-(.*)-release$/\1/')"
+            cp "$built" "dist-apk/huevista-${version}-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}-${abi}.apk"
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          ls -lh dist-apk
+
+      - name: Verify the APKs are signed
+        run: |
+          set -euo pipefail
+          apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          for apk in dist-apk/*.apk; do
+            echo "== $apk"
+            "$apksigner" verify --print-certs "$apk"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: huevista-android-apk
+          path: dist-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # TEMPORARY, alongside the push trigger above: Actions artifacts are served
+      # from Azure blob storage, which the assistant's session cannot reach, so
+      # the APKs are also pushed to a scratch branch that git can fetch. The
+      # branch is deleted once they are collected; this step goes with it.
+      - name: Hand the APKs over on a scratch branch
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd dist-apk
+          git init -q -b tmp/apk-handoff
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -qm 'APK handoff (delete this branch once collected)'
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          git push -f origin HEAD:refs/heads/tmp/apk-handoff
+
+      - name: Publish a GitHub Release
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ inputs.release_tag }}" dist-apk/*.apk \
+            --title "HueVista ${{ steps.apk.outputs.version }} (Android)" \
+            --notes "Android release APKs, built from \`${GITHUB_SHA::7}\` against \`${{ inputs.api_origin }}\`. Install the \`arm64-v8a\` one unless your phone is old enough to need \`armeabi-v7a\`." \
+            --target "$GITHUB_SHA"

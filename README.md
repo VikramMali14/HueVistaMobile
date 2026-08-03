@@ -88,6 +88,68 @@ npx expo start --dev-client
 | `npm run lint` | ESLint (Expo config) |
 | `npm test` | Jest unit tests |
 
+## Release APK (Android)
+
+You don't need an Android SDK on your machine for this — GitHub Actions builds it.
+
+**Actions → _Android release APK_ → Run workflow.** Pick the branch, leave
+`api_origin` at `https://api.huevista.org` (or point it somewhere else for a test
+build), and run it. When it finishes, the APK is on the run page under
+**Artifacts → `huevista-android-apk`**. Fill in `release_tag` instead — say
+`v0.1.0` — and it also publishes a GitHub Release with the APK attached.
+
+The backend origin is **baked into the APK** at build time, so a build made
+against a staging backend will keep talking to staging. Rebuild to repoint it.
+
+### Signing key
+
+With no key configured, the workflow mints a throwaway one per run. Those APKs
+install fine, but each is signed by a different key, so Android refuses to
+*upgrade* one with the next — you'd have to uninstall first. Before you hand the
+app to anyone, create one key and keep it:
+
+```bash
+keytool -genkeypair -v -keystore huevista-release.keystore -storetype PKCS12 \
+  -alias huevista -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 huevista-release.keystore   # macOS: base64 -i huevista-release.keystore
+```
+
+Then add these under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | the base64 blob printed above |
+| `ANDROID_KEYSTORE_PASSWORD` | the store password you chose |
+| `ANDROID_KEY_ALIAS` | `huevista` |
+| `ANDROID_KEY_PASSWORD` | the key password (same as the store password unless you set another) |
+
+Back up that keystore file somewhere safe and private. Lose it and you cannot
+ship an update to anyone who installed the app — a new key means a new install.
+Never commit it; `.gitignore` already excludes `*.jks` and `*.p12`.
+
+## iOS build
+
+**Actions → _iOS release build_ → Run workflow.** Same inputs, macOS runner,
+artifact `huevista-ios-ipa` on the run page.
+
+The .ipa it produces is **unsigned**, because signing an iOS app for a real
+device needs an Apple Developer account — a certificate and a provisioning
+profile listing the devices allowed to run it. There is no way around that; it
+is Apple's rule, not a gap in this workflow. Your options, cheapest first:
+
+- **Sideload it.** [Sideloadly](https://sideloadly.io) or AltStore re-signs the
+  .ipa with your own free Apple ID. Works on your own device, expires after 7
+  days, then you re-sign. Fine for showing the app to yourself.
+- **Xcode, plugged in.** `npx expo prebuild -p ios && npx expo run:ios --device`
+  on a Mac signs with your free Apple ID automatically. Same 7-day expiry.
+- **Apple Developer Program** ($99/yr). Unlocks a year-long ad-hoc build for up
+  to 100 registered devices, and TestFlight for up to 10,000 testers. With an
+  account, [EAS Build](https://docs.expo.dev/build/introduction/) (`eas build -p
+  ios`) handles certificates, profiles and TestFlight upload for you — worth it
+  over hand-rolling the signing steps into this workflow.
+
+Android has no equivalent restriction, which is why that APK installs directly.
+
 ## Troubleshooting
 
 ### `SDK location not found` on `npx expo run:android`
