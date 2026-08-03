@@ -3,7 +3,7 @@ import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { Canvas, Fill, Image, ImageShader, Shader, Skia, rect, type SkImage } from '@shopify/react-native-skia';
 import { RECOLOR_OVERLAY_SKSL } from './overlayShader';
 import { hexToRgb01 } from './color';
-import { useAuthedSkImage } from './authedImage';
+import { useAuthedSkImages } from './authedImage';
 
 function compileOverlay() {
   const compiled = Skia.RuntimeEffect.Make(RECOLOR_OVERLAY_SKSL);
@@ -37,54 +37,52 @@ export interface PaintedPhotoProps {
 
 /**
  * The editor canvas: the room photo with each region's applied shade composited
- * on top, luminance preserved. Each layer loads its own mask and paints only
- * that wall (transparent elsewhere), so all applied colours show at once.
+ * on top, luminance preserved. Each layer paints only its own wall (transparent
+ * elsewhere), so all applied colours show at once.
+ *
+ * Every wall is drawn into the SAME canvas. It used to get one canvas each,
+ * stacked with absolute positioning — which reads as a tidy separation of
+ * concerns and is, in graphics terms, close to the worst thing this screen could
+ * do. A Skia canvas is a real GPU surface, so a five-wall room asked the driver
+ * for six full-screen surfaces and re-bound the room photo as a texture in every
+ * one of them. On a mid-range phone that is enough to exhaust graphics memory
+ * and take the compositor — and sometimes the device — down with it.
+ *
+ * Stacked `Fill`s inside one canvas composite identically, because the overlay
+ * shader already leaves everything outside its mask transparent. Same picture,
+ * one surface, one upload of the photo.
  */
 export function PaintedPhoto({ photo, layers, width, height, fit = 'contain', style }: PaintedPhotoProps) {
+  // Hooks run before the null check so the order never changes between renders.
+  const maskUrls = useMemo(() => layers.map((l) => l.maskUrl), [layers]);
+  const masks = useAuthedSkImages(maskUrls);
+  const bounds = useMemo(() => rect(0, 0, width, height), [width, height]);
+
   if (!photo) return null;
   return (
     <View style={[{ width, height }, style]}>
       <Canvas style={StyleSheet.absoluteFill}>
         <Image image={photo} fit={fit} x={0} y={0} width={width} height={height} />
+        {layers.map((layer, i) => {
+          const mask = masks[i];
+          if (!mask) return null;
+          return (
+            <Fill key={layer.key}>
+              {/* Both shaders take the SAME fit as the photo underneath: a mask
+                  laid out differently from the picture it belongs to paints the
+                  wrong pixels, which is subtler and worse than a visible
+                  misalignment. */}
+              <Shader
+                source={overlayEffect}
+                uniforms={{ targetColor: hexToRgb01(layer.color), strength: layer.strength ?? 1 }}
+              >
+                <ImageShader image={photo} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
+                <ImageShader image={mask} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
+              </Shader>
+            </Fill>
+          );
+        })}
       </Canvas>
-      {layers.map((layer) => (
-        <RegionOverlay key={layer.key} photo={photo} layer={layer} width={width} height={height} fit={fit} />
-      ))}
     </View>
-  );
-}
-
-function RegionOverlay({
-  photo,
-  layer,
-  width,
-  height,
-  fit,
-}: {
-  photo: SkImage;
-  layer: PaintLayer;
-  width: number;
-  height: number;
-  fit: 'cover' | 'contain';
-}) {
-  const mask = useAuthedSkImage(layer.maskUrl);
-  const bounds = useMemo(() => rect(0, 0, width, height), [width, height]);
-  const uniforms = useMemo(
-    () => ({ targetColor: hexToRgb01(layer.color), strength: layer.strength ?? 1 }),
-    [layer.color, layer.strength],
-  );
-  if (!mask) return null;
-  return (
-    <Canvas style={StyleSheet.absoluteFill}>
-      <Fill>
-        {/* Both shaders take the SAME fit as the photo underneath: a mask laid
-            out differently from the picture it belongs to paints the wrong
-            pixels, which is subtler and worse than a visible misalignment. */}
-        <Shader source={overlayEffect} uniforms={uniforms}>
-          <ImageShader image={photo} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
-          <ImageShader image={mask} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
-        </Shader>
-      </Fill>
-    </Canvas>
   );
 }

@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Pressable,
   ScrollView,
@@ -10,7 +9,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import * as MediaLibrary from 'expo-media-library';
@@ -60,6 +58,44 @@ import { MaskStudioSheet } from './MaskStudioSheet';
 
 type Applied = { hex: string; code?: string };
 
+/**
+ * One of the room-level actions in the header bar.
+ *
+ * A tinted tap target rather than a bare glyph: these sit next to the back
+ * arrow, so they need enough weight to read as buttons and enough spacing to
+ * not be hit by accident. While one is working it shows a spinner in place of
+ * its icon — the row keeps its shape instead of shuffling as things load.
+ */
+function IconAction({
+  icon,
+  label,
+  onPress,
+  busy = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      disabled={busy}
+      haptic="tap"
+      activeScale={0.9}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={styles.iconAction}
+    >
+      {busy ? (
+        <ActivityIndicator size="small" color={colors.fgSoft} />
+      ) : (
+        <Ionicons name={icon} size={17} color={colors.fgSoft} />
+      )}
+    </PressableScale>
+  );
+}
+
 /** Which of the three tools is docked under the photo. */
 type DockTab = 'colours' | 'suggest' | 'finder';
 
@@ -81,9 +117,8 @@ const DOCK_OPTIONS: readonly { value: DockTab; label: string }[] = [
  * for looking at.
  */
 export function RoomEditor({ id }: { id: string }) {
-  const router = useRouter();
   const queryClient = useQueryClient();
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
 
   const { data: project, isLoading } = useProject(id);
   const status = project?.status;
@@ -107,6 +142,8 @@ export function RoomEditor({ id }: { id: string }) {
 
   const [maskOpen, setMaskOpen] = useState(false);
   const [maskTarget, setMaskTarget] = useState<{ id: number; label: string } | null>(null);
+  /** The wall menu: pick which wall to paint, redraw one, remove one, add one. */
+  const [wallMenuOpen, setWallMenuOpen] = useState(false);
   /**
    * "Mark walls myself" was pressed and the photo clean-up is still running.
    * When it lands, the marking popup opens on its own — the alternative is a
@@ -155,8 +192,18 @@ export function RoomEditor({ id }: { id: string }) {
 
   // The photo drives the canvas rather than the other way round: its own aspect
   // ratio, at the content width, so none of the room is cropped away.
+  //
+  // The height ceiling is not cosmetic. fitBox narrows the box rather than
+  // cropping it, so a 9:16 phone photo at full content width produced a canvas
+  // taller than the screen — a GPU surface the user could only ever see half of,
+  // and one that pushed the wall chips and the colour dock below the fold on
+  // every portrait shot. Capping at ~58% of the window keeps the whole room
+  // visible with the tools that change it in the same glance.
   const contentWidth = Math.round(width - spacing.lg * 2);
-  const canvas = fitBox(photo?.width(), photo?.height(), { maxWidth: contentWidth });
+  const canvas = fitBox(photo?.width(), photo?.height(), {
+    maxWidth: contentWidth,
+    maxHeight: Math.round(windowHeight * 0.6),
+  });
 
   const segmented = status === 'SEGMENTED';
   const editable = !readOnly && segmented;
@@ -267,30 +314,6 @@ export function RoomEditor({ id }: { id: string }) {
     } finally {
       setRenaming(false);
     }
-  }
-
-  /** Delete, with the cost named first — the room and its colours both go. */
-  function confirmDelete() {
-    Alert.alert(
-      'Delete this room?',
-      'The photo and every colour you applied are removed for good. This cannot be undone.',
-      [
-        { text: 'Keep it', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await projectsApi.remove(id);
-              await queryClient.invalidateQueries({ queryKey: ['projects'] });
-              router.back();
-            } catch (err) {
-              setActionError(err instanceof ApiError ? err.message : 'Couldn’t delete this room.');
-            }
-          },
-        },
-      ],
-    );
   }
 
   async function doShare() {
@@ -414,47 +437,89 @@ export function RoomEditor({ id }: { id: string }) {
       ? 'Detecting walls… this usually takes 30–90 seconds'
       : null;
 
-  return (
-    <Screen scroll aurora tint={tint} contentStyle={styles.content}>
-      <View style={styles.header}>
-        <BackLink />
+  /* Back, then everything you can do to the room as a whole: rename it, share
+     it, keep a copy of it. They sit together because they are the same kind of
+     act — about the room, not about the paint.
+
+     Deleting is deliberately not here. It was the only irreversible action on
+     the screen, one mis-tap from the back arrow, and it removed a room and every
+     colour on it for good. */
+  const header = (
+    <View style={styles.header}>
+      <BackLink />
+      <View style={styles.headerActions}>
         {status ? (
           <StatusPill
             label={statusLabel(status)}
             tone={status === 'FAILED' ? 'expired' : segmented ? 'done' : 'progress'}
           />
         ) : null}
-      </View>
-
-      <View style={styles.titleRow}>
-        <Text variant="title" numberOfLines={1} style={styles.titleText}>
-          {project?.name ?? 'Room'}
-        </Text>
         {!readOnly ? (
-          <View style={styles.titleActions}>
-            <Pressable
+          <>
+            <IconAction
+              icon="pencil"
+              label="Rename this room"
               onPress={() => {
                 setRenameValue(project?.name ?? '');
                 setRenameOpen(true);
               }}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Rename this room"
-            >
-              <Ionicons name="pencil" size={18} color={colors.fgSoft} />
-            </Pressable>
-            <Pressable
-              onPress={confirmDelete}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Delete this room"
-            >
-              <Ionicons name="trash-outline" size={18} color={colors.fgSoft} />
-            </Pressable>
-          </View>
+            />
+            {segmented ? (
+              <>
+                <IconAction icon="share-outline" label="Share this room" busy={sharing} onPress={doShare} />
+                <IconAction
+                  icon="download-outline"
+                  label="Save this image to your photos"
+                  busy={savingImg}
+                  onPress={doSaveImage}
+                />
+              </>
+            ) : null}
+          </>
         ) : null}
       </View>
+    </View>
+  );
 
+  const titleRow = (
+    <View style={styles.titleRow}>
+      <Text variant="title" numberOfLines={1} style={styles.titleText}>
+        {project?.name ?? 'Room'}
+      </Text>
+    </View>
+  );
+
+  return (
+    <Screen
+      scroll
+      aurora
+      tint={tint}
+      contentStyle={styles.content}
+      /* Back, name, and the room itself stay put. Everything that changes the
+         walls scrolls beneath them, so the photo is always in view while it is
+         being painted — picking a colour used to scroll the room off the top of
+         the screen, which is the one thing a visualizer must not do. */
+      fixed={
+        <View style={styles.pinned}>
+          {header}
+          {titleRow}
+          <RoomPhoto
+            ref={shotRef}
+            photo={isLoading ? null : photo}
+            photoStatus={photoStatus}
+            onReload={reloadPhoto}
+            layers={segmented ? layers : []}
+            width={canvas.width}
+            height={canvas.height}
+            mode={canvasMode}
+            onTap={liftColour}
+            onMiss={() => setCanvasNote('That spot is outside the photo. Tap somewhere on the room.')}
+            busyLabel={busyLabel}
+            hint={picking ? 'Tap the colour you want to match' : null}
+          />
+        </View>
+      }
+    >
       {/* A live share link is a capability someone else is holding, so it is
           stated where the owner can see it — and withdrawn from the same place. */}
       {project?.hasShareLink && !readOnly ? (
@@ -509,21 +574,7 @@ export function RoomEditor({ id }: { id: string }) {
         <Text variant="caption">Open until {expiryText(project.accessExpiresAt)}</Text>
       ) : null}
 
-      <RoomPhoto
-        ref={shotRef}
-        photo={isLoading ? null : photo}
-        photoStatus={photoStatus}
-        onReload={reloadPhoto}
-        layers={segmented ? layers : []}
-        width={canvas.width}
-        height={canvas.height}
-        mode={canvasMode}
-        onTap={liftColour}
-        onMiss={() => setCanvasNote('That spot is outside the photo. Tap somewhere on the room.')}
-        busyLabel={busyLabel}
-        hint={picking ? 'Tap the colour you want to match' : null}
-      />
-
+      {/* The photo is pinned above this scroll region — see `fixed` on Screen. */}
       {canvasNote ? (
         <Text variant="caption" color={colors.warning}>
           {canvasNote}
@@ -609,17 +660,18 @@ export function RoomEditor({ id }: { id: string }) {
               <Text variant="overline">{regions.length === 1 ? 'Wall' : 'Walls'}</Text>
               {editable ? (
                 <PressableScale
-                  onPress={() => openMarking(null)}
+                  onPress={() => setWallMenuOpen(true)}
                   haptic="tap"
                   activeScale={0.94}
                   accessibilityRole="button"
-                  accessibilityLabel="Mark another wall"
+                  accessibilityLabel="Edit a wall, or add a new one"
                   style={styles.headChip}
                 >
-                  <Ionicons name="add" size={15} color={colors.accentSoft} />
+                  <Ionicons name="options-outline" size={15} color={colors.accentSoft} />
                   <Text variant="label" color={colors.accentSoft}>
-                    Mark a wall
+                    Edit a wall
                   </Text>
+                  <Ionicons name="chevron-down" size={13} color={colors.accentSoft} />
                 </PressableScale>
               ) : null}
             </View>
@@ -672,34 +724,10 @@ export function RoomEditor({ id }: { id: string }) {
                   })}
                 </ScrollView>
 
-                {editable && selectedRegion ? (
-                  <View style={styles.regionActions}>
-                    {/* Redrawing works on AI-detected walls too — it is how a
-                        mask that took half a pillar gets fixed without a second
-                        AI run. The old outline is replaced, not edited. */}
-                    <Pressable
-                      onPress={() =>
-                        openMarking({
-                          id: selectedRegion.id,
-                          label: selectedRegion.label ?? `Wall ${regions.indexOf(selectedRegion) + 1}`,
-                        })
-                      }
-                      hitSlop={8}
-                      accessibilityRole="button"
-                    >
-                      <Text variant="label" color={colors.accentSoft}>
-                        Redraw this wall
-                      </Text>
-                    </Pressable>
-                    {selectedRegion.manual ? (
-                      <Pressable onPress={() => removeRegion(selectedRegion.id)} hitSlop={8} accessibilityRole="button">
-                        <Text variant="label" color={colors.danger}>
-                          Remove
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
+                {/* "Redraw this wall" used to live here as loose text under the
+                    chips, next to a Remove in danger red. Both are now inside
+                    the wall menu, where choosing which wall and choosing what to
+                    do to it are the same gesture. */}
               </>
             )}
           </View>
@@ -764,26 +792,9 @@ export function RoomEditor({ id }: { id: string }) {
             </View>
           ) : null}
 
-          {/* Share · Save, under the tools rather than above them: they are what
-              you do when the painting is finished. */}
-          <View style={styles.actionsRow}>
-            <Button
-              label="Share"
-              variant="secondary"
-              loading={sharing}
-              icon={<Ionicons name="share-outline" size={16} color={colors.fg} />}
-              onPress={doShare}
-              style={styles.actionBtn}
-            />
-            <Button
-              label="Save image"
-              variant="secondary"
-              loading={savingImg}
-              icon={<Ionicons name="download-outline" size={16} color={colors.fg} />}
-              onPress={doSaveImage}
-              style={styles.actionBtn}
-            />
-          </View>
+          {/* Share and Save now live beside the back arrow, at the top. Their
+              result still reports here, under the tools, because that is where
+              the eye is when the tap happens. */}
           {actionError ? (
             <Text variant="caption" color={colors.danger}>
               {actionError}
@@ -827,6 +838,91 @@ export function RoomEditor({ id }: { id: string }) {
           <Button label="Save" fullWidth loading={renaming} disabled={!renameValue.trim()} onPress={doRename} />
         </View>
       </SheetModal>
+
+      {/* The wall menu.
+          Picking a wall and deciding what to do with it used to be two separate
+          motions in two separate places: chips along the top to select, loose
+          text underneath to redraw, and a plus in the header to add. Which wall
+          "Redraw this wall" meant was only knowable by looking back at which
+          chip was lit. Here every wall is named, its colour is shown beside it,
+          and the two things you can do to it are on the row itself. */}
+      <SheetModal visible={wallMenuOpen} onClose={() => setWallMenuOpen(false)} title="Walls in this room">
+        <View style={styles.wallSheet}>
+          {regions.length === 0 ? (
+            <Text variant="bodySoft">No walls yet. Add the first one below.</Text>
+          ) : (
+            regions.map((r, i) => {
+              const c = appliedColor(r.id, r.appliedHexCode);
+              const label = r.label ?? r.category ?? `Wall ${i + 1}`;
+              return (
+                <View key={r.id} style={styles.wallRow}>
+                  <Pressable
+                    onPress={() => {
+                      haptics.select();
+                      setSelectedRegionId(r.id);
+                      setWallMenuOpen(false);
+                    }}
+                    style={styles.wallPick}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: r.id === selectedRegionId }}
+                    accessibilityLabel={`Paint ${label}`}
+                  >
+                    <View
+                      style={[
+                        styles.regionDot,
+                        { backgroundColor: c?.hex ?? colors.surface2, borderColor: colors.rule },
+                      ]}
+                    />
+                    <Text
+                      variant="body"
+                      numberOfLines={1}
+                      color={r.id === selectedRegionId ? colors.accentSoft : colors.fg}
+                      style={styles.wallName}
+                    >
+                      {label}
+                    </Text>
+                    {r.id === selectedRegionId ? (
+                      <Ionicons name="checkmark" size={16} color={colors.accentSoft} />
+                    ) : null}
+                  </Pressable>
+
+                  <IconAction
+                    icon="brush-outline"
+                    label={`Redraw ${label}`}
+                    onPress={() => {
+                      setWallMenuOpen(false);
+                      openMarking({ id: r.id, label });
+                    }}
+                  />
+                  {/* Only hand-marked walls can go. An AI-detected one is part
+                      of the detection result and the API refuses to delete it. */}
+                  {r.manual ? (
+                    <IconAction
+                      icon="trash-outline"
+                      label={`Remove ${label}`}
+                      onPress={() => {
+                        setWallMenuOpen(false);
+                        removeRegion(r.id);
+                      }}
+                    />
+                  ) : null}
+                </View>
+              );
+            })
+          )}
+
+          <Button
+            label="Add a new wall"
+            variant="secondary"
+            fullWidth
+            icon={<Ionicons name="add" size={16} color={colors.fg} />}
+            onPress={() => {
+              setWallMenuOpen(false);
+              openMarking(null);
+            }}
+          />
+        </View>
+      </SheetModal>
     </Screen>
   );
 }
@@ -848,10 +944,36 @@ function statusLabel(status: string): string {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingBottom: spacing.xxxl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  iconAction: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.rule,
+  },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   titleText: { flexShrink: 1 },
-  titleActions: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
+  pinned: { gap: spacing.md },
+  wallSheet: { gap: spacing.sm },
+  wallRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  wallPick: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.button,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.rule,
+  },
+  wallName: { flex: 1 },
   shareState: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   renameSheet: { gap: spacing.md },
   block: { gap: spacing.sm },
@@ -893,7 +1015,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassEdge,
   },
-  actionsRow: { flexDirection: 'row', gap: spacing.md },
-  actionBtn: { flex: 1 },
   centre: { paddingVertical: spacing.xl, alignItems: 'center' },
 });
