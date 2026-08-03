@@ -72,8 +72,11 @@ jobs:
 
       - name: Archive
         run: |
-          set -euo pipefail
-          xcodebuild archive \
+          set -uo pipefail
+          log="$RUNNER_TEMP/xcodebuild.log"
+          # Full output to a file: a green run should not dump 10k lines into the
+          # job log, and a red one needs more than the tail GitHub's API hands back.
+          if xcodebuild archive \
             -workspace ios/HueVista.xcworkspace \
             -scheme HueVista \
             -configuration Release \
@@ -84,17 +87,17 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | grep -vE '^note: ' || true
-          # tee swallows xcodebuild's exit code, so ask the archive itself.
-          test -d build/HueVista.xcarchive
-
-      - name: What xcodebuild actually complained about
-        if: failure()
-        run: |
-          echo '--- error lines ---'
-          grep -nE 'error:|\*\* ARCHIVE FAILED \*\*|The following build commands failed' "$RUNNER_TEMP/xcodebuild.log" | tail -40 || echo '(none matched)'
-          echo '--- last 60 lines ---'
-          tail -60 "$RUNNER_TEMP/xcodebuild.log"
+            > "$log" 2>&1; then
+            echo "Archived."
+            exit 0
+          fi
+          echo '=== error lines ==='
+          grep -nE 'error:|fatal|The following build commands failed' "$log" | tail -40 || echo '(none matched)'
+          echo '=== around the failing script phase ==='
+          grep -n -B5 -A60 'Build ExpoModulesJSI xcframework' "$log" | tail -120 || true
+          echo '=== last 40 lines ==='
+          tail -40 "$log"
+          exit 1
 
       - name: Package the .ipa
         id: ipa
