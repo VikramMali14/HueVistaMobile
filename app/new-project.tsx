@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Screen, Text, Button, Card } from '../src/components';
+import { Screen, Text, Button, Card, BackLink } from '../src/components';
 import { colors, spacing, radius } from '../src/theme';
 import { imagesApi, projectsApi, ApiError, API_CODES, hasCode } from '../src/api';
+import { haptics } from '../src/haptics';
 import {
   useMyEntitlement,
   useProjectPurchaseOptions,
@@ -78,8 +79,10 @@ export default function NewProject() {
       });
       const project = await projectsApi.create({ imageId: image.imageId });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      haptics.success();
       router.replace(`/project/${project.id}`);
     } catch (err) {
+      haptics.error();
       if (err instanceof ApiError && err.status === 422) {
         setError("That doesn't look like a room or building. Try a photo of the walls you want to paint.");
       } else if (hasCode(err, API_CODES.VERIFICATION_REQUIRED)) {
@@ -105,11 +108,7 @@ export default function NewProject() {
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text variant="label" color={colors.fgSoft}>
-          ‹ Back
-        </Text>
-      </Pressable>
+      <BackLink />
 
       <View style={styles.header}>
         <Text variant="title">Visualize a room</Text>

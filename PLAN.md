@@ -147,11 +147,47 @@ export const colors = {
 
 **Type:** Space Grotesk (headings / display, weights 500–700, via
 `expo-font` + Google Fonts package), system default for body, JetBrains Mono
-(or platform mono) for shade codes, access codes, prices.
+(or platform mono) for shade codes, access codes, prices. Instrument Serif
+italic is the accent face, used for one or two emphasised words inside a sans
+headline (`<Serif>` in `src/components/Text.tsx`) — never for a whole line.
 
-**Shape language:** cards radius 13, buttons radius 11, pills fully rounded,
-status pills are UPPERCASE mono 8–10pt. Status colors: NEW=accent,
+**Shape language:** content cards radius 20 (14 for dense rows and thumbnails),
+buttons 16, inputs 14, sheets 30, pills fully rounded. Status pills are
+UPPERCASE mono 8–10pt. Status colors: NEW=accent,
 IN PROGRESS/EXPIRING=warning, DONE/ACTIVE=success, EXPIRED/OVERDUE=danger.
+
+### 4.1 The aurora layer (mobile only)
+
+The tokens above mirror `globals.css` and must not drift from it. Everything
+below is mobile surface treatment with no web counterpart, and lives in
+`src/theme/{layout,motion}.ts` plus the "Aurora layer" block in `colors.ts`.
+
+- **Aurora background.** Every screen sits on `<Aurora>` (via `Screen`): a
+  vertical wash blooming violet at the top over three drifting colour clouds,
+  rendered in Skia. `tint` biases it toward a colour — the Studio passes the
+  shade currently on the wall.
+- **Depth over borders.** Cards are translucent (`colors.glass`) with a
+  top-lit edge and a real shadow (`elevation.low|mid|high`), not opaque blocks
+  separated by hairlines. `glow(color)` lights an element in its own colour;
+  shade swatches use it so a wall of them reads as paint under light.
+- **The orb.** `<AuraOrb>` is the one hero figure — a glowing disc with a
+  progress ring, for the single number a screen is about (projects left, AI
+  quota).
+- **Floating tab bar.** `<FloatingTabBar>` is a dark capsule inset from all
+  three edges, drawn over the scene. It reports its height through
+  `BottomTabBarHeightContext`, and `Screen` reserves that space automatically —
+  screens never hardcode a tab-bar inset.
+- **Motion.** RN `Animated` with `useNativeDriver` only (transform/opacity), so
+  it survives a busy JS thread; durations and curves come from
+  `src/theme/motion.ts`. `<Reveal>` staggers sections in on mount;
+  `<PressableScale>` dips a control under the finger. Use `useAnimatedValue()`,
+  not `useRef(new Animated.Value())` — the latter trips `react-hooks/refs`.
+
+**Haptics.** Every control gives touch feedback through `src/haptics` — call
+the semantic intent (`haptics.select/tap/press/success/warning/error`), never
+`expo-haptics` directly. The module no-ops on web, swallows failures on devices
+with no haptic engine, and honours the user's opt-out toggle in Account
+(persisted; restored in the root layout by `loadHapticsPreference()`).
 
 ---
 

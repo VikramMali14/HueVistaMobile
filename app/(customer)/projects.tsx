@@ -1,9 +1,9 @@
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Text, Card, Button, StatusPill, AuthedImage } from '../../src/components';
+import { Screen, Serif, Text, Card, Button, StatusPill, AuthedImage } from '../../src/components';
 import type { StatusTone } from '../../src/components';
-import { colors, spacing, radius } from '../../src/theme';
+import { colors, spacing, radius, fontSize } from '../../src/theme';
 import { useProjects } from '../../src/projects/queries';
 import { EntitlementCard, expiryText } from '../../src/account';
 import type { ProjectSummary } from '../../src/api';
@@ -49,7 +49,9 @@ export default function Projects() {
   return (
     <Screen scroll contentStyle={styles.content}>
       <View style={styles.head}>
-        <Text variant="title">Your projects</Text>
+        <Text variant="display">
+        Your <Serif size={fontSize.display}>projects</Serif>
+      </Text>
         <Button label="New" icon={<Ionicons name="add" size={18} color="#fff" />} onPress={() => router.push('/new-project')} />
       </View>
 

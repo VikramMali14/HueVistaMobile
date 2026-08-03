@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Button, Input, Card } from '../../src/components';
+import { Screen, Text, Button, Input, Card, BackLink } from '../../src/components';
 import { colors, spacing } from '../../src/theme';
 import { authApi, userMessage } from '../../src/api';
 
@@ -28,11 +28,7 @@ export default function ForgotPassword() {
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text variant="label" color={colors.fgSoft}>
-          ‹ Back
-        </Text>
-      </Pressable>
+      <BackLink />
 
       <View style={styles.header}>
         <Text variant="title">Reset your password</Text>

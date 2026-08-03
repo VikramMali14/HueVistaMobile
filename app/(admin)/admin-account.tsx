@@ -1,6 +1,6 @@
 import { StyleSheet, ScrollView, Linking } from 'react-native';
-import { Screen, Text, Card, Button } from '../../src/components';
-import { spacing } from '../../src/theme';
+import { Screen, Serif, Text, Card, Button } from '../../src/components';
+import { spacing, fontSize } from '../../src/theme';
 import { AccountPanel } from '../../src/account/AccountPanel';
 import { webUrl } from '../../src/api';
 
@@ -14,7 +14,9 @@ export default function AdminAccount() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="title">Account</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Account</Serif>
+      </Text>
         <AccountPanel>
           <Card>
             <Text variant="label">Admin console</Text>

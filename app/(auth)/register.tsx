@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Button, Input } from '../../src/components';
+import { Screen, Text, Button, Input, BackLink } from '../../src/components';
 import { colors, spacing } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { userMessage } from '../../src/api';
+import { haptics } from '../../src/haptics';
 
 /**
  * Customer account creation. Retailers self-provision from the website with shop
@@ -27,8 +28,10 @@ export default function Register() {
     setBusy(true);
     try {
       await signUp({ name: name.trim(), email: email.trim(), password, accountType: 'customer' });
+      haptics.success();
       // Root auth gate redirects to the customer home on success.
     } catch (err) {
+      haptics.error();
       setError(userMessage(err));
     } finally {
       setBusy(false);
@@ -37,11 +40,7 @@ export default function Register() {
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text variant="label" color={colors.fgSoft}>
-          ‹ Back
-        </Text>
-      </Pressable>
+      <BackLink />
 
       <View style={styles.header}>
         <Text variant="title">Create your account</Text>

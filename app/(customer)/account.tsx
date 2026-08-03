@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Text, Card, Button, StatusPill, Input, SheetModal } from '../../src/components';
-import { colors, spacing, radius } from '../../src/theme';
+import { Screen, Serif, Text, Card, Button, StatusPill, Input, SheetModal } from '../../src/components';
+import { colors, spacing, radius, fontSize } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { API_ORIGIN, accessCodesApi, ApiError, AccessCodeResponse } from '../../src/api';
 import { EntitlementCard } from '../../src/account';
@@ -72,7 +72,9 @@ export default function Account() {
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Text variant="title">Account</Text>
+      <Text variant="display">
+        <Serif size={fontSize.display}>Account</Serif>
+      </Text>
 
       <Card>
         <View style={styles.profile}>

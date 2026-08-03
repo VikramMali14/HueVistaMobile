@@ -1,16 +1,8 @@
 import { useState } from 'react';
 import { View, StyleSheet, FlatList, Share, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  Screen,
-  Text,
-  Button,
-  Card,
-  Input,
-  SheetModal,
-  StatusPill,
-} from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Screen, Serif, Text, Button, Card, Input, SheetModal, StatusPill } from '../../src/components';
+import { colors, spacing, fontSize } from '../../src/theme';
 import {
   useAccessCodes,
   useCreateCode,
@@ -81,7 +73,9 @@ export default function CodesScreen() {
     <Screen>
       <View style={styles.header}>
         <View>
-          <Text variant="title">Codes</Text>
+          <Text variant="display">
+        <Serif size={fontSize.display}>Codes</Serif>
+      </Text>
           <Text variant="bodySoft">{codes.data?.length ?? 0} issued</Text>
         </View>
         <Button

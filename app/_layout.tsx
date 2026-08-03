@@ -11,6 +11,7 @@ import { colors, fontMap } from '../src/theme';
 import { SessionProvider, useSession } from '../src/auth';
 import { queryClient } from '../src/query/client';
 import { persistOptions } from '../src/query/persist';
+import { loadHapticsPreference } from '../src/haptics/preference';
 
 import type { UserRole } from '../src/api/schemas';
 
@@ -87,6 +88,9 @@ export default function RootLayout() {
   useEffect(() => {
     // Keep the OS chrome (Android nav bar, overscroll) on-brand.
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => {});
+    // Restore "haptics off" before anything is tappable, so a user who turned
+    // them off does not get one buzz per launch.
+    loadHapticsPreference();
   }, []);
 
   if (!fontsLoaded) {

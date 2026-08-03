@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, Share } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, StyleSheet, ScrollView, Share } from 'react-native';
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Screen, Text, Card, Button, StatusPill, Input, SheetModal } from '../src/components';
+import { Screen, Text, Card, Button, StatusPill, Input, SheetModal, BackLink } from '../src/components';
 import { colors, spacing } from '../src/theme';
 import { painterApi, decimal, userMessage, PainterInvitation } from '../src/api';
 import { useMyOrg } from '../src/account/roleQueries';
@@ -16,7 +16,6 @@ import { expiryText } from '../src/account/EntitlementCard';
  * accepts. The shop's side of that is minting the code and getting it to them.
  */
 export default function PaintersScreen() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const org = useMyOrg();
   const orgId = org.data?.id;
@@ -63,11 +62,7 @@ export default function PaintersScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text variant="label" color={colors.fgSoft}>
-            ‹ Back
-          </Text>
-        </Pressable>
+        <BackLink />
 
         <View style={styles.header}>
           <Text variant="title">Painters</Text>

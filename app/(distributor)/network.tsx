@@ -1,7 +1,7 @@
 import { View, StyleSheet, ScrollView, RefreshControl, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Card, StatTile, StatusPill } from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Screen, Serif, Text, Card, StatTile, StatusPill } from '../../src/components';
+import { colors, spacing, fontSize } from '../../src/theme';
 import { useNetwork } from '../../src/account/roleQueries';
 import type { NetworkNode } from '../../src/api';
 
@@ -44,7 +44,9 @@ export default function NetworkScreen() {
           />
         }
       >
-        <Text variant="title">Network</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Network</Serif>
+      </Text>
 
         <View style={styles.tiles}>
           <StatTile label="Shops" value={shops.length} tone="accent" style={styles.tile} />

@@ -17,7 +17,7 @@ export interface InputProps extends Omit<TextInputProps, 'style'> {
  */
 export function Input({ label, error, hint, mono, containerStyle, onFocus, onBlur, ...rest }: InputProps) {
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? colors.danger : focused ? colors.accent : colors.rule;
+  const borderColor = error ? colors.danger : focused ? colors.accent : colors.glassEdge;
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -61,11 +61,11 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   input: {
-    height: 50,
+    height: 54,
     borderRadius: radius.input,
     borderWidth: hairline,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
+    backgroundColor: colors.glass,
+    paddingHorizontal: spacing.lg,
     color: colors.fg,
     fontSize: fontSize.base,
   },

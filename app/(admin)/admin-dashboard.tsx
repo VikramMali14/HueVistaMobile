@@ -1,8 +1,8 @@
 import { View, StyleSheet, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Text, Card, Button, StatTile, Meter, StatusPill } from '../../src/components';
-import { colors, spacing, radius } from '../../src/theme';
+import { Screen, Serif, Text, Card, Button, StatTile, Meter, StatusPill } from '../../src/components';
+import { colors, spacing, radius, fontSize } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import {
   useAdminAiUsage,
@@ -84,7 +84,9 @@ export default function AdminDashboard() {
       >
         <View style={styles.header}>
           <View style={styles.headerRow}>
-            <Text variant="title">Dashboard</Text>
+            <Text variant="display">
+        <Serif size={fontSize.display}>Dashboard</Serif>
+      </Text>
             <StatusPill label="Admin" tone="done" />
           </View>
           <Text variant="bodySoft">

@@ -1,8 +1,8 @@
-import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
+
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Text, Card, StatusPill, Meter } from '../src/components';
+import { Screen, Text, Card, StatusPill, Meter, BackLink } from '../src/components';
 import { colors, spacing, radius } from '../src/theme';
 import { useAssignedProducts } from '../src/account/queries';
 import { resolveImageUrl, ShopProduct } from '../src/api';
@@ -63,18 +63,13 @@ function ProductCard({ product }: { product: ShopProduct }) {
  * things they can actually buy after visualizing.
  */
 export default function AssignedProducts() {
-  const router = useRouter();
   const { data, isLoading, isError } = useAssignedProducts();
   const brands = data?.allowedBrands ?? [];
   const products = data?.products ?? [];
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text variant="label" color={colors.fgSoft}>
-          ‹ Back
-        </Text>
-      </Pressable>
+      <BackLink />
 
       <View style={styles.header}>
         <Text variant="title">Your products</Text>

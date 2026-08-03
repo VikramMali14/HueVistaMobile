@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Button, Input } from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Screen, Text, Serif, Button, Input, BackLink } from '../../src/components';
+import { colors, spacing, fontSize } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { userMessage } from '../../src/api';
+import { haptics } from '../../src/haptics';
 
 export default function SignIn() {
   const router = useRouter();
@@ -22,7 +23,12 @@ export default function SignIn() {
     try {
       await signIn(email.trim(), password);
       // On success the root auth gate redirects to the role home automatically.
+      haptics.success();
     } catch (err) {
+      // A wrong password is the one moment in the app where the answer is
+      // "no" — worth feeling, since the error text sits below the fold on a
+      // small screen once the keyboard is up.
+      haptics.error();
       setError(userMessage(err));
     } finally {
       setBusy(false);
@@ -31,14 +37,12 @@ export default function SignIn() {
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text variant="label" color={colors.fgSoft}>
-          ‹ Back
-        </Text>
-      </Pressable>
+      <BackLink />
 
       <View style={styles.header}>
-        <Text variant="title">Welcome back</Text>
+        <Text variant="display">
+          Welcome <Serif size={fontSize.display}>back</Serif>
+        </Text>
         <Text variant="bodySoft">Sign in to your HueVista account.</Text>
       </View>
 

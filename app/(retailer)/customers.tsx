@@ -1,6 +1,6 @@
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { Screen, Text, Button, Card, StatusPill, Meter } from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Screen, Serif, Text, Button, Card, StatusPill, Meter } from '../../src/components';
+import { colors, spacing, fontSize } from '../../src/theme';
 import { useGrantProject, useMyOrg, useShopCustomers } from '../../src/account/roleQueries';
 import { expiryText } from '../../src/account/EntitlementCard';
 
@@ -25,7 +25,9 @@ export default function CustomersScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text variant="title">Customers</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Customers</Serif>
+      </Text>
         <Text variant="bodySoft">
           {customers.data?.length ?? 0} on your codes
         </Text>

@@ -14,11 +14,11 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/haptics';
 import * as MediaLibrary from 'expo-media-library';
 import { captureRef } from 'react-native-view-shot';
-import { Text, Button, Card, StatusPill, Input, SheetModal } from '../../src/components';
-import { colors, spacing, radius } from '../../src/theme';
+import { Text, Button, Card, StatusPill, Input, SheetModal, BackLink, PressableScale } from '../../src/components';
+import { colors, spacing, radius, alpha } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
 import {
   projectsApi,
@@ -140,7 +140,10 @@ export default function ProjectEditor() {
 
   async function applyShade(shade: Shade) {
     if (selectedRegionId == null || readOnly) return;
-    Haptics.selectionAsync().catch(() => {});
+    // The paint lands immediately; the save that follows is silent unless it
+    // fails, so a failed autosave gets its own warning buzz rather than only a
+    // line of text under a tray the user is still scrolling.
+    haptics.press();
     setOverrides((prev) => ({ ...prev, [selectedRegionId]: { hex: shade.hex, code: shade.code } }));
     try {
       // Per-swatch autosave (PLAN §5). Backend returns 204.
@@ -149,6 +152,7 @@ export default function ProjectEditor() {
       ]);
       setSaveError(null);
     } catch {
+      haptics.warning();
       setSaveError('Couldn’t save that colour — it shows here but may not persist.');
     }
   }
@@ -333,12 +337,14 @@ export default function ProjectEditor() {
 
     setMarkBusy(true);
     setMarkError(null);
-    Haptics.selectionAsync().catch(() => {});
+    haptics.impact('heavy');
     try {
       const region = await projectsApi.segmentPoint(id, x, y, `Wall ${regions.length + 1}`);
       await queryClient.invalidateQueries({ queryKey: ['projects', id] });
       setSelectedRegionId(region.id);
+      haptics.success();
     } catch (err) {
+      haptics.error();
       setMarkError(
         err instanceof ApiError ? err.message : 'Couldn’t mark that wall. Try tapping its middle.',
       );
@@ -364,11 +370,7 @@ export default function ProjectEditor() {
   return (
     <ScrollView style={styles.root} contentContainerStyle={[styles.content, { paddingTop: insetsTop }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text variant="label" color={colors.fgSoft}>
-            ‹ Back
-          </Text>
-        </Pressable>
+        <BackLink />
         {status ? <StatusPill label={status} tone={status === 'FAILED' ? 'expired' : status === 'SEGMENTED' ? 'done' : 'progress'} /> : null}
       </View>
 
@@ -694,17 +696,28 @@ export default function ProjectEditor() {
                 // The shop's own code, and its name only if the shop shows names.
                 const display = shadeDisplay(scheme, { code: s.code, name: s.name });
                 return (
-                  <Pressable
+                  <PressableScale
                     key={`${s.brandSlug ?? ''}-${s.code}`}
                     onPress={() => applyShade(s)}
                     disabled={readOnly}
-                    style={[styles.swatchButton, readOnly && styles.swatchDisabled]}
+                    haptic="none"
+                    activeScale={0.9}
+                    style={StyleSheet.flatten([styles.swatchButton, readOnly && styles.swatchDisabled])}
                   >
-                    <View style={[styles.traySwatch, { backgroundColor: s.hex }]} />
+                    <View
+                      style={[
+                        styles.traySwatch,
+                        {
+                          backgroundColor: s.hex,
+                          borderColor: alpha(s.hex, 0.5),
+                          shadowColor: s.hex,
+                        },
+                      ]}
+                    />
                     <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
                       {display.label}
                     </Text>
-                  </Pressable>
+                  </PressableScale>
                 );
               })}
             </ScrollView>
@@ -792,6 +805,15 @@ const styles = StyleSheet.create({
   regionDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1 },
   swatchButton: { width: 64, gap: spacing.xs, alignItems: 'center' },
   swatchDisabled: { opacity: 0.45 },
-  traySwatch: { width: 64, height: 64, borderRadius: radius.card, borderWidth: 1, borderColor: colors.rule },
+  traySwatch: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
   trayLabel: { textAlign: 'center', width: 64 },
 });

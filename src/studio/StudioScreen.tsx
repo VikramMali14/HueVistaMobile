@@ -10,10 +10,10 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useImage } from '@shopify/react-native-skia';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { Screen, Text, Card, Button, StatusPill, AuthedImage } from '../components';
+import { Screen, Text, Serif, Card, Button, StatusPill, AuthedImage, Reveal, PressableScale, SectionHeader } from '../components';
 import type { StatusTone } from '../components';
-import { colors, spacing, radius } from '../theme';
+import { colors, spacing, radius, alpha, fontSize } from '../theme';
+import { haptics } from '../haptics';
 import { RecolorCanvas } from '../engine';
 import { SAMPLE_SHADES } from '../shades/sampleShades';
 import { Shade } from '../shades/types';
@@ -128,13 +128,13 @@ export function StudioScreen() {
   const ready = !!photo && !!mask;
 
   function selectShade(next: Shade) {
-    Haptics.selectionAsync().catch(() => {});
+    haptics.select();
     setShade(next);
   }
 
   const startRoom = (
-    <Pressable onPress={() => router.push('/new-project')} style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}>
-      <Card style={styles.cta}>
+    <PressableScale onPress={() => router.push('/new-project')} haptic="press" activeScale={0.975}>
+      <Card accent={colors.accent} style={styles.cta}>
         <View style={styles.ctaIcon}>
           <Ionicons name="camera" size={22} color={colors.accentSoft} />
         </View>
@@ -146,15 +146,15 @@ export function StudioScreen() {
         </View>
         <Ionicons name="chevron-forward" size={20} color={colors.fgMute} />
       </Card>
-    </Pressable>
+    </PressableScale>
   );
 
   const samplePreview = (
     <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <Text variant="label">{arrivedWithShade ? 'Trying this shade' : 'Try a shade on a sample wall'}</Text>
-        <StatusPill label="Sample room" tone="neutral" />
-      </View>
+      <SectionHeader
+        title={arrivedWithShade ? 'Trying this shade' : 'Try a shade on a sample wall'}
+        trailing={<StatusPill label="Sample room" tone="neutral" />}
+      />
 
       <View style={[styles.canvasFrame, { height: canvasHeight }]}>
         {ready ? (
@@ -213,21 +213,32 @@ export function StudioScreen() {
         {SAMPLE_SHADES.map((s) => {
           const active = s.code === shade.code;
           return (
-            <Pressable key={s.code} onPress={() => selectShade(s)} style={styles.swatchButton}>
+            <PressableScale
+              key={s.code}
+              onPress={() => selectShade(s)}
+              haptic="none"
+              activeScale={0.9}
+              style={styles.swatchButton}
+            >
               <View
                 style={[
                   styles.traySwatch,
                   {
                     backgroundColor: s.hex,
-                    borderColor: active ? colors.accent : colors.rule,
-                    borderWidth: active ? 3 : 1,
+                    // The selected swatch is lit by its own colour rather than
+                    // ringed in accent purple, which fought every warm shade.
+                    borderColor: active ? colors.fg : alpha(s.hex, 0.45),
+                    borderWidth: active ? 2 : 1,
+                    shadowColor: s.hex,
+                    shadowOpacity: active ? 0.85 : 0.3,
+                    shadowRadius: active ? 14 : 7,
                   },
                 ]}
               />
               <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
                 {shadeDisplay(scheme, { code: s.code, name: s.name }).code}
               </Text>
-            </Pressable>
+            </PressableScale>
           );
         })}
       </ScrollView>
@@ -236,7 +247,7 @@ export function StudioScreen() {
 
   const yourRooms = (
     <View style={styles.section}>
-      <Text variant="label">Your rooms</Text>
+      <SectionHeader title="Your rooms" />
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -284,11 +295,15 @@ export function StudioScreen() {
   );
 
   return (
-    <Screen scroll contentStyle={styles.content}>
-      <View style={styles.head}>
-        <Text variant="title">Studio</Text>
+    // The background takes the shade currently on the sample wall, so the whole
+    // screen sits in the light of the colour being considered.
+    <Screen scroll contentStyle={styles.content} tint={shade.hex}>
+      <Reveal style={styles.head}>
+        <Text variant="display">
+          <Serif size={fontSize.display}>Studio</Serif>
+        </Text>
         <Text variant="bodySoft">Put real paint on your own walls — on-device, with the shadows kept.</Text>
-      </View>
+      </Reveal>
 
       {/* What the shop assigned: projects left, access window, ask-for-more.
           Renders nothing when no shop manages this account. */}

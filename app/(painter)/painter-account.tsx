@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Screen, Text, Card, Button, Input, SheetModal, StatTile } from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Screen, Serif, Text, Card, Button, Input, SheetModal, StatTile } from '../../src/components';
+import { colors, spacing, fontSize } from '../../src/theme';
 import { AccountPanel } from '../../src/account/AccountPanel';
 import { usePainterProfile, usePainterRetailers } from '../../src/account/roleQueries';
 import { decimal, painterApi, userMessage } from '../../src/api';
@@ -48,7 +48,9 @@ export default function PainterAccount() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="title">Account</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Account</Serif>
+      </Text>
 
         <AccountPanel>
           <View style={styles.tiles}>

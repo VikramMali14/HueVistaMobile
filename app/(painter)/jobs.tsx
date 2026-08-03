@@ -1,7 +1,7 @@
 import { View, StyleSheet, FlatList, RefreshControl, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Card, StatusPill } from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Screen, Serif, Text, Card, StatusPill } from '../../src/components';
+import { colors, spacing, fontSize } from '../../src/theme';
 import { usePainterJobs } from '../../src/account/roleQueries';
 import { decimal, PaintJob } from '../../src/api';
 import type { StatusTone } from '../../src/components';
@@ -53,7 +53,9 @@ export default function JobsScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text variant="title">Jobs</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Jobs</Serif>
+      </Text>
         <Text variant="bodySoft">
           {rows.filter((j) => j.status === 'PENDING').length} waiting on you
         </Text>

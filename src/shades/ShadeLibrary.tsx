@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, Pressable, ScrollView, FlatList, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, FlatList, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, Input, Chip, StatusPill } from '../components';
-import { colors, spacing, radius } from '../theme';
+import { Text, Serif, Input, Chip, StatusPill, Aurora, PressableScale, useTabBarInset } from '../components';
+import { colors, spacing, radius, alpha, fontSize } from '../theme';
 import { useShadesInfinite, useShadeFamilies } from './queries';
 import { ShadeSummary } from '../api';
 import { ShadeDetailSheet } from './ShadeDetailSheet';
@@ -37,6 +37,7 @@ export interface ShadeLibraryProps {
  */
 export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, onTryOnWall }: ShadeLibraryProps) {
   const insets = useSafeAreaInsets();
+  const tabBarInset = useTabBarInset();
 
   const [brandSlug, setBrandSlug] = useState<string | undefined>(undefined);
   const [family, setFamily] = useState<string | undefined>(undefined);
@@ -92,7 +93,9 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
     <View style={styles.header}>
       {extraHeader}
       <View style={styles.titleRow}>
-        <Text variant="title">{headerTitle}</Text>
+        <Text variant="display">
+          <Serif size={fontSize.display}>{headerTitle}</Serif>
+        </Text>
         {total != null ? <StatusPill label={`${total.toLocaleString()} shades`} tone="neutral" /> : null}
       </View>
 
@@ -126,6 +129,7 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
 
   return (
     <View style={styles.root}>
+      <Aurora intensity={0.7} />
       <FlatList
         data={shades}
         keyExtractor={(item) => `${item.brandSlug ?? 'x'}-${item.shadeCode}`}
@@ -134,7 +138,7 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
         ListHeaderComponent={Header}
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
-          paddingBottom: insets.bottom + spacing.xxl,
+          paddingBottom: insets.bottom + spacing.xxl + tabBarInset,
           paddingHorizontal: spacing.lg,
           gap: spacing.md,
         }}
@@ -147,8 +151,19 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
           // The shop's own code, and the paint name only if the shop shows names.
           const display = shadeDisplay(scheme, { code: item.shadeCode, name: item.name });
           return (
-            <Pressable style={styles.card} onPress={() => setSelected(item)}>
-              <View style={[styles.swatch, { backgroundColor: item.hexCode ?? colors.surface2 }]} />
+            <PressableScale style={styles.card} onPress={() => setSelected(item)} haptic="tap" activeScale={0.95}>
+              {/* The swatch carries a glow of its own colour, so a wall of
+                  them reads as paint under light rather than as a table. */}
+              <View
+                style={[
+                  styles.swatch,
+                  {
+                    backgroundColor: item.hexCode ?? colors.surface2,
+                    shadowColor: item.hexCode ?? colors.bgDeep,
+                    borderColor: item.hexCode ? alpha(item.hexCode, 0.5) : colors.rule,
+                  },
+                ]}
+              />
               <Text variant="heading" numberOfLines={1}>
                 {display.label}
               </Text>
@@ -156,7 +171,7 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
                 {display.name && item.brandName ? `${item.brandName} · ` : ''}
                 {display.code}
               </Text>
-            </Pressable>
+            </PressableScale>
           );
         }}
         ListFooterComponent={
@@ -205,12 +220,22 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: { gap: spacing.md, marginBottom: spacing.md },
+  header: { gap: spacing.md, marginBottom: spacing.lg },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   chips: { gap: spacing.sm, paddingVertical: spacing.xs },
   column: { gap: spacing.md },
   card: { flex: 1, gap: 2 },
-  swatch: { width: '100%', height: 104, borderRadius: radius.card, borderWidth: 1, borderColor: colors.rule, marginBottom: spacing.xs },
+  swatch: {
+    width: '100%',
+    height: 118,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    marginBottom: spacing.sm,
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
   footer: { paddingVertical: spacing.lg, alignItems: 'center' },
   empty: { paddingVertical: spacing.xxxl, alignItems: 'center' },
 });

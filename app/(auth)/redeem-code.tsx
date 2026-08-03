@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Text, Button, Input, Card } from '../../src/components';
+import { Screen, Text, Button, Input, Card, BackLink } from '../../src/components';
 import { colors, spacing, radius } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { accessCodesApi, ApiError, RedeemAccountResponse } from '../../src/api';
+import { haptics } from '../../src/haptics';
 
 /**
  * Redeem a shop code with no account at all.
@@ -28,6 +29,7 @@ export default function RedeemCode() {
     setError(null);
     try {
       setDone(await accessCodesApi.redeemAccount(code));
+      haptics.success();
       // The session is deliberately NOT adopted here: doing so flips the auth
       // gate immediately and this screen is replaced by the customer tabs before
       // the walk-in has read who they are now signed in as. They step through it.
@@ -84,11 +86,7 @@ export default function RedeemCode() {
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text variant="label" color={colors.fgSoft}>
-          ‹ Back
-        </Text>
-      </Pressable>
+      <BackLink />
 
       <View style={styles.header}>
         <Text variant="title">Enter your shop code</Text>

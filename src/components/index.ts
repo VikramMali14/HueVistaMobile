@@ -1,11 +1,11 @@
-export { Text } from './Text';
-export type { TextProps } from './Text';
+export { Text, Serif } from './Text';
+export type { TextProps, SerifProps } from './Text';
 export { Button } from './Button';
 export type { ButtonProps } from './Button';
 export { Card } from './Card';
-export type { CardProps } from './Card';
-export { StatusPill, Chip, toneForStatus } from './Pill';
-export type { StatusPillProps, ChipProps, StatusTone } from './Pill';
+export type { CardProps, CardTone } from './Card';
+export { StatusPill, Chip, DashedPill, toneForStatus } from './Pill';
+export type { StatusPillProps, ChipProps, DashedPillProps, StatusTone } from './Pill';
 export { Input } from './Input';
 export type { InputProps } from './Input';
 export { SheetModal } from './SheetModal';
@@ -18,3 +18,18 @@ export { Screen } from './Screen';
 export type { ScreenProps } from './Screen';
 export { BrandMark } from './BrandMark';
 export { AuthedImage } from './AuthedImage';
+
+/* Aurora layer — the artistic primitives. */
+export { Aurora } from './Aurora';
+export type { AuroraProps } from './Aurora';
+export { AuraOrb } from './AuraOrb';
+export type { AuraOrbProps } from './AuraOrb';
+export { PressableScale } from './PressableScale';
+export type { PressableScaleProps } from './PressableScale';
+export { Reveal } from './Reveal';
+export type { RevealProps } from './Reveal';
+export { FloatingTabBar, useTabBarInset } from './FloatingTabBar';
+export { SectionHeader } from './SectionHeader';
+export type { SectionHeaderProps } from './SectionHeader';
+export { BackLink } from './BackLink';
+export type { BackLinkProps } from './BackLink';
