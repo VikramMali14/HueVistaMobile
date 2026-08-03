@@ -77,14 +77,24 @@ jobs:
             -workspace ios/HueVista.xcworkspace \
             -scheme HueVista \
             -configuration Release \
-            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath build/HueVista.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            CODE_SIGN_ENTITLEMENTS="" \
-            -quiet
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | grep -vE '^note: ' || true
+          # tee swallows xcodebuild's exit code, so ask the archive itself.
+          test -d build/HueVista.xcarchive
+
+      - name: What xcodebuild actually complained about
+        if: failure()
+        run: |
+          echo '--- error lines ---'
+          grep -nE 'error:|\*\* ARCHIVE FAILED \*\*|The following build commands failed' "$RUNNER_TEMP/xcodebuild.log" | tail -40 || echo '(none matched)'
+          echo '--- last 60 lines ---'
+          tail -60 "$RUNNER_TEMP/xcodebuild.log"
 
       - name: Package the .ipa
         id: ipa
