@@ -93,11 +93,16 @@ export const authApi = {
 };
 
 /**
- * E-mail and phone verification.
+ * E-mail verification.
  *
- * The backend gates project creation behind these when the feature is on, and
+ * The backend gates project creation behind this when the feature is on, and
  * says so with a `VERIFICATION_REQUIRED` refusal — which is what sends the app to
  * the verify screen rather than leaving the user at a dead end.
+ *
+ * Mobile/SMS verification is deliberately absent: no SMS provider is wired up
+ * yet, so `/auth/verify/phone/*` would issue a code that never reaches the
+ * handset. The backend still exposes those endpoints — bring the two wrappers
+ * back from git history once SMS is live.
  *
  * Verified against `VerificationController`.
  */
@@ -112,21 +117,6 @@ export const verificationApi = {
   /** Confirm the e-mailed code; returns the profile with `emailVerified` set. */
   confirmEmail(code: string): Promise<UserProfile> {
     return apiFetch('/auth/verify/email/confirm', {
-      method: 'POST',
-      json: { code: code.trim() },
-    }).then((d) => userProfileSchema.parse(d));
-  },
-
-  /** Send an SMS code. A number may be supplied to set it at the same time. */
-  sendPhone(phoneNumber?: string): Promise<VerificationStatus> {
-    return apiFetch('/auth/verify/phone/send', {
-      method: 'POST',
-      json: phoneNumber ? { phoneNumber } : {},
-    }).then((d) => verificationStatusSchema.parse(d));
-  },
-
-  confirmPhone(code: string): Promise<UserProfile> {
-    return apiFetch('/auth/verify/phone/confirm', {
       method: 'POST',
       json: { code: code.trim() },
     }).then((d) => userProfileSchema.parse(d));

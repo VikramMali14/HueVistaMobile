@@ -44,8 +44,10 @@ export const userProfileSchema = z.object({
   provider: z.string().nullish(),
   role: userRoleSchema,
   emailVerified: z.boolean().default(false),
+  // The number is kept as a contact detail. There is no `phoneVerified` here on
+  // purpose: the app cannot verify a number without an SMS sender, so carrying
+  // the flag would only invite a screen to render a tick nobody can earn.
   phoneNumber: z.string().nullish(),
-  phoneVerified: z.boolean().default(false),
   createdAt: z.string().nullish(),
 });
 export type UserProfile = z.infer<typeof userProfileSchema>;

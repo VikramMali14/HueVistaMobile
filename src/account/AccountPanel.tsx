@@ -131,19 +131,18 @@ export function AccountActions() {
 
   return (
     <>
-      {/* Verification. Shown only when something is actually unverified — a
+      {/* Verification. Shown only when the e-mail is actually unverified — a
           green tick nobody asked for is noise, but an unverified e-mail is the
-          thing that will refuse a project later. */}
-      {p && !passwordless && (!p.emailVerified || (p.phoneNumber && !p.phoneVerified)) ? (
+          thing that will refuse a project later. Phone is not asked about: there
+          is no SMS sender wired up, so it can never be answered. */}
+      {p && !passwordless && !p.emailVerified ? (
         <Card>
           <View style={styles.head}>
             <Text variant="label">Verification</Text>
             <StatusPill label="Incomplete" tone="progress" />
           </View>
           <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
-            {!p.emailVerified
-              ? 'Your email address is not verified yet. Some actions ask for it first.'
-              : 'Your phone number is not verified yet.'}
+            Your email address is not verified yet. Some actions ask for it first.
           </Text>
           <Button
             label="Verify now"
