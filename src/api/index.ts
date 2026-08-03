@@ -11,7 +11,7 @@ export type { ShadeFilters } from './shades';
 export { imagesApi } from './images';
 export type { LocalImage } from './images';
 export { projectsApi, regionMaskUrl } from './projects';
-export type { RegionColorUpdate, CreateProjectInput } from './projects';
+export type { RegionColorUpdate, CreateProjectInput, CustomMaskInput, RegionCategory } from './projects';
 export {
   imageResponseSchema,
   projectSchema,

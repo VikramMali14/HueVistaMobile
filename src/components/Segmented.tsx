@@ -27,6 +27,11 @@ export interface SegmentedProps<T extends string> {
  * screen distinguished "narrow this list" from "choose one of these". The
  * sliding thumb makes the single-choice nature visible without a word of
  * explanation, and the movement shows which way the selection travelled.
+ *
+ * The thumb is a lifted neutral pane rather than a tinted one, which is how iOS
+ * draws this control: on a segmented row the selection is a physical object
+ * sitting above the track, and colouring it purple made it read as a filter
+ * that had been *applied* rather than as a place the finger currently is.
  */
 export function Segmented<T extends string>({
   options,
@@ -136,9 +141,16 @@ const styles = StyleSheet.create({
     top: 2,
     bottom: 2,
     borderRadius: radius.pill,
-    backgroundColor: colors.accentGhost,
+    backgroundColor: alpha(colors.fg, 0.13),
     borderWidth: 1,
-    borderColor: alpha(colors.accentSoft, 0.35),
+    borderColor: alpha(colors.fg, 0.16),
+    // A real lift, so the selected segment sits above the track rather than
+    // being a differently-coloured part of it.
+    shadowColor: '#000000',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   item: {
     flex: 1,

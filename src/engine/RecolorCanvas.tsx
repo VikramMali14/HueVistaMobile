@@ -33,6 +33,8 @@ export interface RecolorCanvasProps {
   strength?: number;
   width: number;
   height: number;
+  /** How the photo fills the box. `contain` shows all of it — see PaintedPhoto. */
+  fit?: 'cover' | 'contain';
   style?: StyleProp<ViewStyle>;
 }
 
@@ -41,7 +43,7 @@ export interface RecolorCanvasProps {
  * preserved. Runs entirely on the GPU, so dragging the strength slider or
  * switching shades is instant and free (PLAN.md §2.7).
  */
-export function RecolorCanvas({ photo, mask, color, strength = 1, width, height, style }: RecolorCanvasProps) {
+export function RecolorCanvas({ photo, mask, color, strength = 1, width, height, fit = 'contain', style }: RecolorCanvasProps) {
   const bounds = useMemo(() => rect(0, 0, width, height), [width, height]);
   const uniforms = useMemo(
     () => ({ targetColor: hexToRgb01(color), strength }),
@@ -54,7 +56,7 @@ export function RecolorCanvas({ photo, mask, color, strength = 1, width, height,
   if (!mask) {
     return (
       <Canvas style={[{ width, height }, style]}>
-        <Image image={photo} fit="cover" x={0} y={0} width={width} height={height} />
+        <Image image={photo} fit={fit} x={0} y={0} width={width} height={height} />
       </Canvas>
     );
   }
@@ -63,8 +65,8 @@ export function RecolorCanvas({ photo, mask, color, strength = 1, width, height,
     <Canvas style={[{ width, height }, style]}>
       <Fill>
         <Shader source={effect} uniforms={uniforms}>
-          <ImageShader image={photo} fit="cover" rect={bounds} tx="clamp" ty="clamp" />
-          <ImageShader image={mask} fit="cover" rect={bounds} tx="clamp" ty="clamp" />
+          <ImageShader image={photo} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
+          <ImageShader image={mask} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
         </Shader>
       </Fill>
     </Canvas>
