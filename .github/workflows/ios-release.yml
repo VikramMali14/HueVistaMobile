@@ -58,9 +58,8 @@ jobs:
           set -euo pipefail
           pick=''
           for app in $(ls -d /Applications/Xcode*.app | sort -V); do
-            swiftc="$app/Contents/Developer/usr/bin/swift"
-            [ -x "$swiftc" ] || continue
-            version="$("$swiftc" --version 2>/dev/null | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)"
+            # swift lives in the toolchain, not Developer/usr/bin — ask xcrun.
+            version="$(DEVELOPER_DIR="$app/Contents/Developer" xcrun swift --version 2>/dev/null | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)"
             [ -n "$version" ] || continue
             echo "$app -> Swift $version"
             major="${version%%.*}"
