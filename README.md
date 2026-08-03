@@ -127,6 +127,29 @@ Back up that keystore file somewhere safe and private. Lose it and you cannot
 ship an update to anyone who installed the app — a new key means a new install.
 Never commit it; `.gitignore` already excludes `*.jks` and `*.p12`.
 
+## iOS build
+
+**Actions → _iOS release build_ → Run workflow.** Same inputs, macOS runner,
+artifact `huevista-ios-ipa` on the run page.
+
+The .ipa it produces is **unsigned**, because signing an iOS app for a real
+device needs an Apple Developer account — a certificate and a provisioning
+profile listing the devices allowed to run it. There is no way around that; it
+is Apple's rule, not a gap in this workflow. Your options, cheapest first:
+
+- **Sideload it.** [Sideloadly](https://sideloadly.io) or AltStore re-signs the
+  .ipa with your own free Apple ID. Works on your own device, expires after 7
+  days, then you re-sign. Fine for showing the app to yourself.
+- **Xcode, plugged in.** `npx expo prebuild -p ios && npx expo run:ios --device`
+  on a Mac signs with your free Apple ID automatically. Same 7-day expiry.
+- **Apple Developer Program** ($99/yr). Unlocks a year-long ad-hoc build for up
+  to 100 registered devices, and TestFlight for up to 10,000 testers. With an
+  account, [EAS Build](https://docs.expo.dev/build/introduction/) (`eas build -p
+  ios`) handles certificates, profiles and TestFlight upload for you — worth it
+  over hand-rolling the signing steps into this workflow.
+
+Android has no equivalent restriction, which is why that APK installs directly.
+
 ## Troubleshooting
 
 ### `SDK location not found` on `npx expo run:android`
