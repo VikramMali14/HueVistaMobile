@@ -47,36 +47,6 @@ jobs:
           node-version: 20
           cache: npm
 
-      # expo-modules-jsi builds from a Swift package, and it is picky at both
-      # ends. Package.swift declares swift-tools-version 6.2, so the runner's
-      # default Xcode (Swift 6.1) cannot even resolve it; but its sources also
-      # fail to type-check under the newest toolchain on the image (Xcode 26.3
-      # rejects JavaScriptCodable+Date.swift). Take the *oldest* Xcode that
-      # satisfies 6.2 — closest to what the package was written against.
-      - name: Select an Xcode with Swift 6.2
-        run: |
-          set -euo pipefail
-          pick=''
-          for app in $(ls -d /Applications/Xcode*.app | sort -V); do
-            # swift lives in the toolchain, not Developer/usr/bin — ask xcrun.
-            version="$(DEVELOPER_DIR="$app/Contents/Developer" xcrun swift --version 2>/dev/null | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)"
-            [ -n "$version" ] || continue
-            echo "$app -> Swift $version"
-            major="${version%%.*}"
-            minor="${version#*.}"
-            if [ -z "$pick" ] && { [ "$major" -gt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -ge 2 ]; }; }; then
-              pick="$app"
-            fi
-          done
-          if [ -z "$pick" ]; then
-            echo "No installed Xcode ships Swift 6.2 or newer; expo-modules-jsi cannot build here."
-            exit 1
-          fi
-          echo "Selected $pick"
-          sudo xcode-select -s "$pick/Contents/Developer"
-          xcodebuild -version
-          swift --version
-
       - name: Install dependencies
         run: npm ci
 
@@ -101,15 +71,52 @@ jobs:
         working-directory: ios
 
       # expo-modules-jsi builds itself as an xcframework from a Swift package,
-      # via a nested xcodebuild inside a CocoaPods script phase. When that fails
-      # the archive reports only "PhaseScriptExecution ... failed" and swallows
-      # the reason, so run it up front where its own output is the step log. On
-      # success the script phase finds its hash cache and skips.
-      - name: Prebuild the ExpoModulesJSI xcframework
+      # via a nested xcodebuild inside a CocoaPods script phase. Two reasons to
+      # hoist it out of the archive: the archive reports only "PhaseScriptExecution
+      # ... failed" and swallows the reason, and the package compiles under a
+      # narrow band of toolchains. Its Package.swift needs swift-tools 6.2, its
+      # sources use `weak let` (rejected by Swift 6.2 on Xcode 26.0), and the
+      # newest Xcode on the image fails to type-check JavaScriptCodable+Date.swift.
+      # So try each candidate in turn and keep the one that gets through — the
+      # archive then reuses it, and the in-build script phase hits its hash cache.
+      - name: Build the ExpoModulesJSI xcframework
         env:
           PODS_ROOT: ${{ github.workspace }}/ios/Pods
           PLATFORM_NAME: iphoneos
-        run: node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
+        run: |
+          set -uo pipefail
+          script=node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
+          built=''
+          attempted=0
+          for app in $(ls -d /Applications/Xcode*.app | sort -V); do
+            # swift lives in the toolchain, not Developer/usr/bin — ask xcrun.
+            version="$(DEVELOPER_DIR="$app/Contents/Developer" xcrun swift --version 2>/dev/null | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)"
+            [ -n "$version" ] || continue
+            major="${version%%.*}"
+            minor="${version#*.}"
+            minor="${minor%%.*}"
+            if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 2 ]; }; then
+              echo "$app — Swift $version, too old to resolve the package"
+              continue
+            fi
+            echo "::group::$app — Swift $version"
+            clean=''
+            [ "$attempted" -eq 0 ] || clean='--clean'
+            attempted=$((attempted + 1))
+            if DEVELOPER_DIR="$app/Contents/Developer" "$script" $clean; then
+              echo '::endgroup::'
+              echo "Built ExpoModulesJSI with $app (Swift $version)"
+              echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+              built=1
+              break
+            fi
+            echo '::endgroup::'
+            echo "$app (Swift $version) cannot compile expo-modules-jsi — trying the next one"
+          done
+          if [ -z "$built" ]; then
+            echo "No Xcode on this runner can compile expo-modules-jsi ($attempted tried)."
+            exit 1
+          fi
 
       - name: Archive
         run: |
