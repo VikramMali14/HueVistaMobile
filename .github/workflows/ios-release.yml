@@ -34,7 +34,7 @@ permissions:
 jobs:
   ipa:
     name: Archive unsigned .ipa
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       EXPO_PUBLIC_API_ORIGIN: ${{ inputs.api_origin || 'https://api.huevista.org' }}
       EXPO_PUBLIC_WEB_ORIGIN: ${{ inputs.web_origin }}
@@ -99,19 +99,20 @@ jobs:
               echo "$app — Swift $version, too old to resolve the package"
               continue
             fi
-            echo "::group::$app — Swift $version"
             clean=''
             [ "$attempted" -eq 0 ] || clean='--clean'
             attempted=$((attempted + 1))
-            if DEVELOPER_DIR="$app/Contents/Developer" "$script" $clean; then
-              echo '::endgroup::'
-              echo "Built ExpoModulesJSI with $app (Swift $version)"
+            attempt_log="$RUNNER_TEMP/jsi-$(basename "$app").log"
+            # A failed attempt prints a screenful of swift-frontend arguments;
+            # keep it in a file and surface only the diagnostics.
+            if DEVELOPER_DIR="$app/Contents/Developer" "$script" $clean > "$attempt_log" 2>&1; then
+              echo "$app (Swift $version): built ExpoModulesJSI"
               echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
               built=1
               break
             fi
-            echo '::endgroup::'
-            echo "$app (Swift $version) cannot compile expo-modules-jsi — trying the next one"
+            echo "$app (Swift $version): cannot compile expo-modules-jsi"
+            grep -E 'error:' "$attempt_log" | sed 's|/Users/runner/work/HueVistaMobile/HueVistaMobile/||' | sort -u | head -5
           done
           if [ -z "$built" ]; then
             echo "No Xcode on this runner can compile expo-modules-jsi ($attempted tried)."
