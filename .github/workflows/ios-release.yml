@@ -70,6 +70,17 @@ jobs:
         run: pod install
         working-directory: ios
 
+      # expo-modules-jsi builds itself as an xcframework from a Swift package,
+      # via a nested xcodebuild inside a CocoaPods script phase. When that fails
+      # the archive reports only "PhaseScriptExecution ... failed" and swallows
+      # the reason, so run it up front where its own output is the step log. On
+      # success the script phase finds its hash cache and skips.
+      - name: Prebuild the ExpoModulesJSI xcframework
+        env:
+          PODS_ROOT: ${{ github.workspace }}/ios/Pods
+          PLATFORM_NAME: iphoneos
+        run: node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
+
       - name: Archive
         run: |
           set -uo pipefail
@@ -97,6 +108,10 @@ jobs:
           grep -n -B5 -A60 'Build ExpoModulesJSI xcframework' "$log" | tail -120 || true
           echo '=== last 40 lines ==='
           tail -40 "$log"
+          # Last, so it survives the tail the logs API hands back.
+          echo '=== summary ==='
+          grep -E '\[ExpoModulesJSI\]|error:|xcodebuild: error|The following build commands failed' "$log" \
+            | grep -vE '^note: ' | tail -25
           exit 1
 
       - name: Package the .ipa
