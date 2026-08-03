@@ -5,6 +5,12 @@ name: Android release APK
 # the run's artifacts — or from a GitHub Release, if you give it a tag.
 
 on:
+  # TEMPORARY: `workflow_dispatch` only becomes available once this file is on
+  # the default branch, so this first build has to come from a push. Remove this
+  # trigger once the branch lands on main.
+  push:
+    branches: [claude/android-apk-release-wntcda]
+    paths: ['.github/workflows/android-release.yml']
   workflow_dispatch:
     inputs:
       api_origin:
@@ -32,7 +38,7 @@ jobs:
     name: Assemble release APK
     runs-on: ubuntu-latest
     env:
-      EXPO_PUBLIC_API_ORIGIN: ${{ inputs.api_origin }}
+      EXPO_PUBLIC_API_ORIGIN: ${{ inputs.api_origin || 'https://api.huevista.org' }}
       EXPO_PUBLIC_WEB_ORIGIN: ${{ inputs.web_origin }}
       EXPO_NO_TELEMETRY: '1'
     steps:
@@ -141,7 +147,7 @@ jobs:
           retention-days: 30
 
       - name: Publish a GitHub Release
-        if: inputs.release_tag != ''
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
