@@ -47,16 +47,34 @@ jobs:
           node-version: 20
           cache: npm
 
-      # expo-modules-jsi's Package.swift declares swift-tools-version 6.2, and
-      # the runner's default Xcode is older than that — package resolution fails
-      # with "package 'apple' is using Swift tools version 6.2.0 but the
-      # installed version is 6.1.0". Take the newest Xcode the image carries.
-      - name: Select the newest Xcode
+      # expo-modules-jsi builds from a Swift package, and it is picky at both
+      # ends. Package.swift declares swift-tools-version 6.2, so the runner's
+      # default Xcode (Swift 6.1) cannot even resolve it; but its sources also
+      # fail to type-check under the newest toolchain on the image (Xcode 26.3
+      # rejects JavaScriptCodable+Date.swift). Take the *oldest* Xcode that
+      # satisfies 6.2 — closest to what the package was written against.
+      - name: Select an Xcode with Swift 6.2
         run: |
           set -euo pipefail
-          ls -d /Applications/Xcode*.app
-          newest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
-          sudo xcode-select -s "$newest/Contents/Developer"
+          pick=''
+          for app in $(ls -d /Applications/Xcode*.app | sort -V); do
+            swiftc="$app/Contents/Developer/usr/bin/swift"
+            [ -x "$swiftc" ] || continue
+            version="$("$swiftc" --version 2>/dev/null | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)"
+            [ -n "$version" ] || continue
+            echo "$app -> Swift $version"
+            major="${version%%.*}"
+            minor="${version#*.}"
+            if [ -z "$pick" ] && { [ "$major" -gt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -ge 2 ]; }; }; then
+              pick="$app"
+            fi
+          done
+          if [ -z "$pick" ]; then
+            echo "No installed Xcode ships Swift 6.2 or newer; expo-modules-jsi cannot build here."
+            exit 1
+          fi
+          echo "Selected $pick"
+          sudo xcode-select -s "$pick/Contents/Developer"
           xcodebuild -version
           swift --version
 
