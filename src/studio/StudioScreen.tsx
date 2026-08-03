@@ -11,6 +11,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useImage } from '@shopify/react-native-skia';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen, Text, Serif, Card, Button, StatusPill, AuthedImage, Reveal, PressableScale, SectionHeader } from '../components';
+import { ShadePickerSheet } from '../shades/ShadePickerSheet';
+import { useRecentShades } from '../shades/recentShades';
+import { inkOn, depthOf, DEPTH_LABEL } from '../shades/colorScience';
 import type { StatusTone } from '../components';
 import { colors, spacing, radius, alpha, fontSize } from '../theme';
 import { haptics } from '../haptics';
@@ -100,11 +103,15 @@ export function StudioScreen() {
 
   const [shade, setShade] = useState<Shade>(() => shadeFromParams() ?? SAMPLE_SHADES[5]);
   const [comparing, setComparing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { recent, remember } = useRecentShades();
 
   // Colours read the way this shop presents them: its own code pattern, and the
   // paint name only when the shop shows names.
   const scheme = useShadeCodeScheme().data;
   const display = shadeDisplay(scheme, { code: shade.code, name: shade.name });
+  // The tray Shade carries no tonality, so this is banded from the hex.
+  const shadeDepth = depthOf({ hexCode: shade.hex });
 
   // Sync when a new shade is passed via params, by adjusting state during render
   // (React's recommended pattern), while still letting the tray override locally.
@@ -130,6 +137,7 @@ export function StudioScreen() {
   function selectShade(next: Shade) {
     haptics.select();
     setShade(next);
+    remember(next);
   }
 
   const startRoom = (
@@ -186,18 +194,46 @@ export function StudioScreen() {
         </Text>
       </Pressable>
 
-      <Card>
-        <View style={styles.shadeRow}>
-          <View style={[styles.selectedSwatch, { backgroundColor: shade.hex }]} />
+      {/* The applied colour, and the way to change it. Tapping the card opens
+          the whole catalogue rather than the twelve demo swatches that used to
+          be the only colours this screen could paint. */}
+      <Card accent={shade.hex}>
+        <PressableScale
+          onPress={() => setPickerOpen(true)}
+          haptic="tap"
+          activeScale={0.98}
+          accessibilityRole="button"
+          accessibilityLabel={`${display.label}. Choose a different colour.`}
+          style={styles.shadeRow}
+        >
+          <View
+            style={[
+              styles.selectedSwatch,
+              { backgroundColor: shade.hex, shadowColor: shade.hex, borderColor: alpha(shade.hex, 0.5) },
+            ]}
+          />
           <View style={styles.shadeMeta}>
-            <Text variant="heading">{display.label}</Text>
-            <Text variant="mono" color={colors.fgSoft}>
+            <Text variant="heading" numberOfLines={1}>
+              {display.label}
+            </Text>
+            <Text variant="mono" color={colors.fgSoft} numberOfLines={1}>
               {display.name ? `${shade.brand} · ` : ''}
               {display.code}
             </Text>
           </View>
+          <View style={styles.changeChip}>
+            <Ionicons name="color-palette-outline" size={16} color={colors.accentSoft} />
+            <Text variant="label" color={colors.accentSoft}>
+              Change
+            </Text>
+          </View>
+        </PressableScale>
+
+        <View style={styles.shadeFacts}>
+          {shadeDepth ? <StatusPill label={DEPTH_LABEL[shadeDepth]} tone="neutral" /> : null}
           {shade.family ? <StatusPill label={shade.family} tone="neutral" /> : null}
         </View>
+
         {/* The sample wall is a preview, not the product — say where the real
             thing is rather than leaving this as the end of the road. */}
         <Button
@@ -209,39 +245,51 @@ export function StudioScreen() {
         />
       </Card>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tray}>
-        {SAMPLE_SHADES.map((s) => {
-          const active = s.code === shade.code;
-          return (
-            <PressableScale
-              key={s.code}
-              onPress={() => selectShade(s)}
-              haptic="none"
-              activeScale={0.9}
-              style={styles.swatchButton}
-            >
-              <View
-                style={[
-                  styles.traySwatch,
-                  {
-                    backgroundColor: s.hex,
-                    // The selected swatch is lit by its own colour rather than
-                    // ringed in accent purple, which fought every warm shade.
-                    borderColor: active ? colors.fg : alpha(s.hex, 0.45),
-                    borderWidth: active ? 2 : 1,
-                    shadowColor: s.hex,
-                    shadowOpacity: active ? 0.85 : 0.3,
-                    shadowRadius: active ? 14 : 7,
-                  },
-                ]}
-              />
-              <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
-                {shadeDisplay(scheme, { code: s.code, name: s.name }).code}
-              </Text>
-            </PressableScale>
-          );
-        })}
-      </ScrollView>
+      {/* Colours already used, for flipping between two candidates without
+          reopening the picker each time. */}
+      {recent.length > 0 ? (
+        <View style={styles.section}>
+          <SectionHeader title="Recently used" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tray}>
+            {recent.map((s) => {
+              const active = s.code === shade.code;
+              return (
+                <PressableScale
+                  key={`${s.brandSlug ?? ''}-${s.code}`}
+                  onPress={() => selectShade(s)}
+                  haptic="none"
+                  activeScale={0.9}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={shadeDisplay(scheme, { code: s.code, name: s.name }).label}
+                  style={styles.swatchButton}
+                >
+                  <View
+                    style={[
+                      styles.traySwatch,
+                      {
+                        backgroundColor: s.hex,
+                        // Lit by its own colour rather than ringed in accent
+                        // purple, which fought every warm shade.
+                        borderColor: active ? colors.fg : alpha(s.hex, 0.45),
+                        borderWidth: active ? 2 : 1,
+                        shadowColor: s.hex,
+                        shadowOpacity: active ? 0.85 : 0.3,
+                        shadowRadius: active ? 14 : 7,
+                      },
+                    ]}
+                  >
+                    {active ? <Ionicons name="checkmark" size={16} color={inkOn(s.hex).strong} /> : null}
+                  </View>
+                  <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
+                    {shadeDisplay(scheme, { code: s.code, name: s.name }).code}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -322,6 +370,15 @@ export function StudioScreen() {
           {samplePreview}
         </>
       )}
+
+      {/* Left open after a pick: the sample wall repaints live behind it, so
+          trying five colours is five taps rather than five reopenings. */}
+      <ShadePickerSheet
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={selectShade}
+        selectedCode={shade.code}
+      />
     </Screen>
   );
 }
@@ -359,12 +416,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   shadeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  selectedSwatch: { width: 48, height: 48, borderRadius: radius.button, borderWidth: 1, borderColor: colors.rule },
+  selectedSwatch: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
   shadeMeta: { flex: 1, gap: 2 },
+  changeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentGhost,
+    borderWidth: 1,
+    borderColor: alpha(colors.accentSoft, 0.3),
+  },
+  shadeFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   sampleCta: { marginTop: spacing.md },
   tray: { gap: spacing.md, paddingVertical: spacing.xs },
   swatchButton: { width: 64, gap: spacing.xs, alignItems: 'center' },
-  traySwatch: { width: 64, height: 64, borderRadius: radius.card },
+  traySwatch: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
   trayLabel: { textAlign: 'center' },
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
   list: { gap: spacing.md },

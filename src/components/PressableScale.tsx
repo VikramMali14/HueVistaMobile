@@ -27,7 +27,8 @@ import { haptics } from '../haptics';
 type HapticIntent = 'tap' | 'press' | 'select' | 'none';
 
 export interface PressableScaleProps extends Omit<PressableProps, 'style'> {
-  children: React.ReactNode;
+  /** Optional: a bare colour swatch is a valid target with nothing inside it. */
+  children?: React.ReactNode;
   /** How far it dips. 0.97 for large cards, 0.94 for small controls. */
   activeScale?: number;
   /** Which haptic fires on contact. `none` for rows that already trigger one. */

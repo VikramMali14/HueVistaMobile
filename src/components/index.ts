@@ -29,6 +29,8 @@ export type { PressableScaleProps } from './PressableScale';
 export { Reveal } from './Reveal';
 export type { RevealProps } from './Reveal';
 export { FloatingTabBar, useTabBarInset } from './FloatingTabBar';
+export { Segmented } from './Segmented';
+export type { SegmentedProps, SegmentedOption } from './Segmented';
 export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { BackLink } from './BackLink';

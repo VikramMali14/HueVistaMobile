@@ -38,6 +38,8 @@ import { usePopularShades } from '../../src/shades/queries';
 import { summaryToShade, Shade } from '../../src/shades/types';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
 import { shadeDisplay } from '../../src/shades/shadeCodes';
+import { ShadePickerSheet } from '../../src/shades/ShadePickerSheet';
+import { useRecentShades } from '../../src/shades/recentShades';
 import { RecommendationsSheet } from '../../src/projects/RecommendationsSheet';
 import {
   useProjectPurchaseOptions,
@@ -68,10 +70,21 @@ export default function ProjectEditor() {
   // How this shop labels a colour: its own code pattern, names shown or hidden.
   const scheme = useShadeCodeScheme().data;
 
-  // Shade tray: live popular shades, sample as offline fallback.
+  /**
+   * The quick row under the photo: colours this person already used, then
+   * popular ones to fill it out, with the local sample as an offline floor.
+   * It is a shortcut, not the catalogue — that is one tap away in the picker,
+   * which is what made the old twelve-swatch tray a dead end.
+   */
+  const { recent, remember } = useRecentShades();
   const popular = (usePopularShades(12).data ?? []).map(summaryToShade).filter((s): s is Shade => s !== null);
-  const tray = popular.length > 0 ? popular : SAMPLE_SHADES;
+  const fallback = popular.length > 0 ? popular : SAMPLE_SHADES;
+  const tray = [
+    ...recent,
+    ...fallback.filter((f) => !recent.some((r) => r.code === f.code && r.brandSlug === f.brandSlug)),
+  ].slice(0, 16);
 
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<number, Applied>>({});
   const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
@@ -144,6 +157,7 @@ export default function ProjectEditor() {
     // fails, so a failed autosave gets its own warning buzz rather than only a
     // line of text under a tray the user is still scrolling.
     haptics.press();
+    remember(shade);
     setOverrides((prev) => ({ ...prev, [selectedRegionId]: { hex: shade.hex, code: shade.code } }));
     try {
       // Per-swatch autosave (PLAN §5). Backend returns 204.
@@ -688,9 +702,26 @@ export default function ProjectEditor() {
 
           {/* Shade tray */}
           <View style={styles.block}>
-            <Text variant="label">
-              {readOnly ? 'Colours last applied' : 'Tap a shade to paint the selected wall'}
-            </Text>
+            <View style={styles.trayHead}>
+              <Text variant="label" style={styles.trayHeadText}>
+                {readOnly ? 'Colours last applied' : 'Tap a shade to paint the selected wall'}
+              </Text>
+              {!readOnly ? (
+                <PressableScale
+                  onPress={() => setPickerOpen(true)}
+                  haptic="tap"
+                  activeScale={0.94}
+                  accessibilityRole="button"
+                  accessibilityLabel="Browse the full colour catalogue"
+                  style={styles.browseChip}
+                >
+                  <Ionicons name="color-palette-outline" size={15} color={colors.accentSoft} />
+                  <Text variant="label" color={colors.accentSoft}>
+                    All colours
+                  </Text>
+                </PressableScale>
+              ) : null}
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rowGap}>
               {tray.map((s) => {
                 // The shop's own code, and its name only if the shop shows names.
@@ -760,6 +791,15 @@ export default function ProjectEditor() {
           />
         </View>
       </SheetModal>
+
+      {/* Stays open after a pick so the wall behind it can be tried in several
+          colours without reopening the catalogue between each. */}
+      <ShadePickerSheet
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={applyShade}
+        selectedCode={selectedRegionId != null ? appliedColor(selectedRegionId, null)?.code : null}
+      />
     </ScrollView>
   );
 }
@@ -803,6 +843,19 @@ const styles = StyleSheet.create({
   regionChipActive: { backgroundColor: colors.accentGhost, borderColor: colors.accent },
   regionChipIdle: { backgroundColor: colors.surface, borderColor: colors.rule },
   regionDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1 },
+  trayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  trayHeadText: { flexShrink: 1 },
+  browseChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentGhost,
+    borderWidth: 1,
+    borderColor: alpha(colors.accentSoft, 0.3),
+  },
   swatchButton: { width: 64, gap: spacing.xs, alignItems: 'center' },
   swatchDisabled: { opacity: 0.45 },
   traySwatch: {
