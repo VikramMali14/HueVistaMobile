@@ -19,6 +19,14 @@ export interface ScreenProps {
   tint?: string | null;
   /** 0–1 presence. Hero screens go to ~1.2, dense lists sit around 0.6. */
   auroraIntensity?: number;
+  /**
+   * Content pinned above the scroll area.
+   *
+   * For screens with one thing the whole page is about — a room photo being
+   * painted — where letting it scroll away means the controls underneath act on
+   * something the user can no longer see. Only meaningful with `scroll`.
+   */
+  fixed?: React.ReactNode;
 }
 
 /** Standard page frame: aurora background + safe-area padding + optional scroll. */
@@ -30,6 +38,7 @@ export function Screen({
   aurora = true,
   tint,
   auroraIntensity = 1,
+  fixed,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
   // Non-zero only inside a tab navigator. The floating bar draws over the
@@ -43,10 +52,21 @@ export function Screen({
     paddingHorizontal: spacing.lg,
   };
 
+  // With a pinned region the padding splits: the top and sides belong to it, and
+  // the scroll area keeps the sides and the bottom. Leaving the top padding on
+  // the scroll view too would open a gap under the pinned content.
+  const pinnedPad: ViewStyle = {
+    paddingTop: pad.paddingTop,
+    paddingHorizontal: spacing.lg,
+  };
+  const scrollPad: ViewStyle = fixed
+    ? { paddingTop: spacing.md, paddingBottom: pad.paddingBottom, paddingHorizontal: spacing.lg }
+    : pad;
+
   const body = scroll ? (
     <ScrollView
       style={styles.fill}
-      contentContainerStyle={[pad, contentStyle]}
+      contentContainerStyle={[scrollPad, contentStyle]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
@@ -59,6 +79,7 @@ export function Screen({
   return (
     <View style={styles.root}>
       {aurora ? <Aurora tint={tint} intensity={auroraIntensity} /> : null}
+      {fixed ? <View style={pinnedPad}>{fixed}</View> : null}
       {body}
     </View>
   );

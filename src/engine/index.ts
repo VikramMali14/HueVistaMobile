@@ -12,6 +12,6 @@ export { averageHex, patchAround } from './pixelColor';
 export { rasterizeMask } from './rasterizeMask';
 export { maskOutputSize, isDrawnArea, hasPaintedArea, MASK_MAX_EDGE } from './maskGeometry';
 export type { MaskStroke } from './maskGeometry';
-export { useAuthedSkImage, useAuthedSkImageState } from './authedImage';
+export { useAuthedSkImage, useAuthedSkImageState, useAuthedSkImages } from './authedImage';
 export type { AuthedSkImageState, ImageLoadStatus } from './authedImage';
 export { resolveImageUrl } from '../api/config';

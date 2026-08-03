@@ -30,7 +30,15 @@ yarn-error.*
 *.pem
 
 # local env files
+# .env itself is machine-local: it points at whichever API origin this
+# checkout talks to. Only .env*.local was ignored, so the real .env sat
+# untracked-but-committable and would have gone in with a `git add -A`.
+.env
 .env*.local
+
+# editor / IDE
+.idea/
+.vscode/
 
 # typescript
 *.tsbuildinfo

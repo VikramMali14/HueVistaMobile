@@ -1,0 +1,58 @@
+diff --git a/node_modules/expo-modules-core/android/build.gradle b/node_modules/expo-modules-core/android/build.gradle
+index 3491121..e6f7960 100644
+--- a/node_modules/expo-modules-core/android/build.gradle
++++ b/node_modules/expo-modules-core/android/build.gradle
+@@ -293,13 +293,47 @@ def generateStubPCHTask = tasks.register("generateStubPCH") {
+ 
+           def stubHeaderPath = stubHeader.absolutePath.replace('\\', '/')
+ 
+-          def cmd = entry.command
+-            // Replace the forced-include path: `-Xclang -include -Xclang <path>/cmake_pch.hxx`
+-            .replaceAll(/-Xclang -include -Xclang [^\s]+cmake_pch\.hxx(?=\s)/, java.util.regex.Matcher.quoteReplacement("-Xclang -include -Xclang ${stubHeaderPath}"))
+-            // Replace the source file operand: `<path>/cmake_pch.hxx.cxx`
+-            .replaceAll(/[^\s]+cmake_pch\.hxx\.cxx/, java.util.regex.Matcher.quoteReplacement(stubHeaderPath))
++          // Split the compile command into argv, honouring double-quoted segments.
++          // Paths may contain spaces (e.g. "C:\Users\First Last\..."), so a naive
++          // split on " " would shred them into bogus arguments.
++          def tokenizeCommand = { String line ->
++            def argv = []
++            def current = new StringBuilder()
++            boolean inQuotes = false
++            boolean started = false
++            for (int i = 0; i < line.length(); i++) {
++              def ch = line.charAt(i)
++              if (ch == ('"' as char)) {
++                inQuotes = !inQuotes
++                started = true
++              } else if (!inQuotes && Character.isWhitespace(ch)) {
++                if (started) {
++                  argv.add(current.toString())
++                  current.setLength(0)
++                  started = false
++                }
++              } else {
++                current.append(ch)
++                started = true
++              }
++            }
++            if (started) {
++              argv.add(current.toString())
++            }
++            return argv
++          }
++
++          // Swap the PCH header and the source operand for the stub, per-argument
++          // rather than by regex over the raw string.
++          def argv = tokenizeCommand(entry.command).collect { arg ->
++            def normalized = arg.replace('\\', '/')
++            if (normalized.endsWith("cmake_pch.hxx.cxx") || normalized.endsWith("cmake_pch.hxx")) {
++              return stubHeaderPath
++            }
++            return arg
++          }
+ 
+-          def process = new ProcessBuilder(cmd.split(" ").toList())
++          def process = new ProcessBuilder(argv)
+             .directory(new File(entry.directory))
+             .redirectErrorStream(true)
+             .start()

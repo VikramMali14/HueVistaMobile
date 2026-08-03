@@ -11,20 +11,84 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Canvas, Image as SkiaImage, Path, Skia, type SkImage } from '@shopify/react-native-skia';
+import { Canvas, Circle, Image as SkiaImage, Path, Skia, type SkImage } from '@shopify/react-native-skia';
 import { Aurora, Button, Chip, PressableScale, Segmented, Text } from '../components';
 import { colors, spacing, radius, alpha } from '../theme';
 import { haptics } from '../haptics';
-import { ApiError, projectsApi, type Region, type RegionCategory } from '../api';
-import { fitBox, rasterizeMask, type MaskStroke } from '../engine';
+import { ApiError, projectsApi, regionMaskUrl, type Region, type RegionCategory } from '../api';
+import { fitBox, rasterizeMask, useAuthedSkImage, type MaskStroke } from '../engine';
 
 /** How the wall is being marked out. */
-type MarkMode = 'detect' | 'draw';
+type MarkMode = 'detect' | 'points' | 'draw';
 
 const MODE_OPTIONS: readonly { value: MarkMode; label: string }[] = [
-  { value: 'detect', label: 'Tap to detect' },
-  { value: 'draw', label: 'Draw it' },
+  { value: 'detect', label: 'Tap' },
+  { value: 'points', label: 'Corners' },
+  { value: 'draw', label: 'Freehand' },
 ];
+
+/** Zoom limits. Below 1 the photo would float inside its own frame. */
+const MIN_SCALE = 1;
+const MAX_SCALE = 6;
+
+/** A touch that moves less than this (screen px) is a tap, not a drag. */
+const TAP_SLOP = 8;
+
+/** Corner handle radius, in screen px, before the zoom transform is applied. */
+const HANDLE_R = 7;
+
+interface Viewport {
+  scale: number;
+  tx: number;
+  ty: number;
+}
+
+const IDENTITY: Viewport = { scale: 1, tx: 0, ty: 0 };
+
+function clampScale(s: number): number {
+  return s < MIN_SCALE ? MIN_SCALE : s > MAX_SCALE ? MAX_SCALE : s;
+}
+
+/**
+ * How far the photo may be pushed around at a given zoom.
+ *
+ * Panning is bounded so the room cannot be dragged off its own frame and lost —
+ * at scale 1 there is nothing to pan, and beyond that the slack is exactly the
+ * overhang the zoom created.
+ */
+function clampPan(v: Viewport, w: number, h: number): Viewport {
+  const maxX = Math.max(0, (w * v.scale - w) / 2);
+  const maxY = Math.max(0, (h * v.scale - h) / 2);
+  return {
+    scale: v.scale,
+    tx: Math.min(maxX, Math.max(-maxX, v.tx)),
+    ty: Math.min(maxY, Math.max(-maxY, v.ty)),
+  };
+}
+
+/**
+ * Screen point → normalized (0–1) photo coordinate, undoing the zoom.
+ *
+ * React Native scales a view about its centre, so the inverse has to pivot there
+ * too. Getting this wrong is silent and awful: taps land somewhere near where you
+ * meant, and only at high zoom does it become obvious the mask is offset.
+ */
+function toPhoto(sx: number, sy: number, v: Viewport, w: number, h: number) {
+  const cx = w / 2;
+  const cy = h / 2;
+  return {
+    x: clamp01((cx + (sx - v.tx - cx) / v.scale) / w),
+    y: clamp01((cy + (sy - v.ty - cy) / v.scale) / h),
+  };
+}
+
+/** Distance between the first two touches of a multi-touch event. */
+function touchDistance(touches: readonly { pageX: number; pageY: number }[]): number {
+  if (touches.length < 2) return 0;
+  const dx = touches[0].pageX - touches[1].pageX;
+  const dy = touches[0].pageY - touches[1].pageY;
+  return Math.hypot(dx, dy);
+}
 
 const CATEGORIES: readonly { value: RegionCategory; label: string }[] = [
   { value: 'MAIN_WALL', label: 'Main wall' },
@@ -107,6 +171,34 @@ export function MaskStudioSheet({
   const canvasRef = useRef({ width: 1, height: 1 });
   const eraseRef = useRef(false);
 
+  /**
+   * Zoom and pan.
+   *
+   * Marking a wall accurately means working at the edges — the line where wall
+   * meets ceiling, the gap beside a window frame — and at full-room zoom those
+   * are a few pixels wide under a fingertip. Without magnification the mask is
+   * only ever as good as the user's aim at 1:1.
+   *
+   * The viewport is React state so the coordinate maths can read it directly;
+   * the ref mirrors it for the pan handlers, which are created once and would
+   * otherwise close over the first render's value forever.
+   */
+  const [view, setView] = useState<Viewport>(IDENTITY);
+  const viewRef = useRef<Viewport>(IDENTITY);
+  /** Viewport and touch geometry captured when the current gesture began. */
+  const gestureRef = useRef<{
+    start: Viewport;
+    startDistance: number;
+    startX: number;
+    startY: number;
+    pinching: boolean;
+    moved: boolean;
+  } | null>(null);
+
+  /** Point-to-point corners, in normalized photo coordinates. */
+  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
+  const modeRef = useRef<MarkMode>('detect');
+
   // The photo is sized against the window rather than against its own
   // container: measuring a box whose height is decided by the thing being
   // measured is a loop, and it settles at whichever size it happened to start.
@@ -115,9 +207,11 @@ export function MaskStudioSheet({
     () =>
       fitBox(photo?.width(), photo?.height(), {
         maxWidth: windowWidth - spacing.lg * 2,
-        // Leave room for the tools under it — a wall you have to scroll to
-        // reach cannot be traced in one gesture.
-        maxHeight: Math.max(220, windowHeight * 0.52),
+        // Three fifths of the screen, and the photo never scrolls out of it —
+        // see the fixed/scrolling split below. A wall you have to chase up the
+        // page cannot be traced in one gesture, and a tap aimed at a moving
+        // target lands somewhere the user did not mean.
+        maxHeight: Math.max(220, windowHeight * 0.6),
       }),
     [photo, windowWidth, windowHeight],
   );
@@ -125,11 +219,26 @@ export function MaskStudioSheet({
 
   canvasRef.current = { width: canvas.width || 1, height: canvas.height || 1 };
   eraseRef.current = erasing;
+  viewRef.current = view;
+  modeRef.current = mode;
+
+  /**
+   * The wall's current mask, shown underneath while it is being re-marked.
+   *
+   * Redrawing used to start from a blank photo, which meant working blind: you
+   * could not see what the old mask got wrong, so you could not tell whether the
+   * new outline was actually an improvement until after it was saved.
+   */
+  const existingMask = useAuthedSkImage(editTarget ? regionMaskUrl(projectId, editTarget.id) : null);
+  const [showExisting, setShowExisting] = useState(true);
 
   function reset() {
     setStrokes([]);
     setLive(null);
     liveRef.current = null;
+    setPoints([]);
+    setView(IDENTITY);
+    viewRef.current = IDENTITY;
     setError(null);
     setNote(null);
     setBusy(null);
@@ -141,54 +250,185 @@ export function MaskStudioSheet({
     onClose();
   }
 
-  // ── Drawing ──────────────────────────────────────────────────────────────
+  // ── Gestures ─────────────────────────────────────────────────────────────
+  /**
+   * One responder for all three modes.
+   *
+   * Two fingers always means zoom, whatever the mode — pinching is never a
+   * drawing gesture, and treating it as one is how a stray second finger used to
+   * put a stray line across the wall. One finger means whatever the mode says:
+   * trace in Freehand, place a corner in Corners, pan otherwise.
+   *
+   * The maths run against `viewRef`/`canvasRef` rather than the closed-over
+   * state because this responder is built once and must not be rebuilt mid
+   * gesture — swapping handlers between finger-down and finger-up drops the
+   * gesture entirely.
+   */
   const pan = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
-        // The photo sits in a ScrollView; claiming the gesture on move is what
-        // stops a traced outline from scrolling the sheet out from under it.
+        // The photo sits above a ScrollView; refusing to hand the gesture back
+        // is what stops a traced outline from scrolling the sheet out from
+        // under it.
         onPanResponderTerminationRequest: () => false,
+
         onPanResponderGrant: (e: GestureResponderEvent) => {
-          const point = {
-            x: clamp01(e.nativeEvent.locationX / canvasRef.current.width),
-            y: clamp01(e.nativeEvent.locationY / canvasRef.current.height),
+          const { touches, locationX, locationY } = e.nativeEvent;
+          const pinching = touches.length >= 2;
+          gestureRef.current = {
+            start: viewRef.current,
+            startDistance: touchDistance(touches),
+            startX: locationX,
+            startY: locationY,
+            pinching,
+            moved: false,
           };
+          setError(null);
+          if (pinching || modeRef.current !== 'draw') return;
+
+          const point = toPhoto(
+            locationX,
+            locationY,
+            viewRef.current,
+            canvasRef.current.width,
+            canvasRef.current.height,
+          );
           const stroke: MaskStroke = { mode: eraseRef.current ? 'erase' : 'add', points: [point] };
           liveRef.current = stroke;
           setLive(stroke);
-          setError(null);
         },
-        onPanResponderMove: (e: GestureResponderEvent) => {
-          const current = liveRef.current;
-          if (!current) return;
-          const point = {
-            x: clamp01(e.nativeEvent.locationX / canvasRef.current.width),
-            y: clamp01(e.nativeEvent.locationY / canvasRef.current.height),
-          };
-          const last = current.points[current.points.length - 1];
-          // Thin out the trail: a finger reports far more points than an
-          // outline needs, and every one of them costs a re-render.
-          if (Math.abs(point.x - last.x) < MIN_STEP && Math.abs(point.y - last.y) < MIN_STEP) return;
-          const next: MaskStroke = { mode: current.mode, points: [...current.points, point] };
-          liveRef.current = next;
-          setLive(next);
+
+        onPanResponderMove: (e: GestureResponderEvent, gs) => {
+          const g = gestureRef.current;
+          if (!g) return;
+          const { touches, locationX, locationY } = e.nativeEvent;
+          if (Math.abs(gs.dx) > TAP_SLOP || Math.abs(gs.dy) > TAP_SLOP) g.moved = true;
+
+          // Two fingers: zoom about the pinch, regardless of mode.
+          if (touches.length >= 2) {
+            if (!g.pinching) {
+              // A second finger landed mid-gesture. Re-baseline instead of
+              // jumping, and abandon any stroke it interrupted.
+              g.pinching = true;
+              g.start = viewRef.current;
+              g.startDistance = touchDistance(touches);
+              liveRef.current = null;
+              setLive(null);
+              return;
+            }
+            const distance = touchDistance(touches);
+            if (g.startDistance <= 0 || distance <= 0) return;
+            const next = clampPan(
+              {
+                scale: clampScale(g.start.scale * (distance / g.startDistance)),
+                tx: g.start.tx,
+                ty: g.start.ty,
+              },
+              canvasRef.current.width,
+              canvasRef.current.height,
+            );
+            viewRef.current = next;
+            setView(next);
+            return;
+          }
+
+          // One finger, Freehand: extend the trace.
+          if (modeRef.current === 'draw' && !g.pinching) {
+            const current = liveRef.current;
+            if (!current) return;
+            const point = toPhoto(
+              locationX,
+              locationY,
+              viewRef.current,
+              canvasRef.current.width,
+              canvasRef.current.height,
+            );
+            const last = current.points[current.points.length - 1];
+            // Thin out the trail: a finger reports far more points than an
+            // outline needs, and every one of them costs a re-render. The
+            // threshold shrinks as you zoom in, so detail work stays detailed.
+            const step = MIN_STEP / viewRef.current.scale;
+            if (Math.abs(point.x - last.x) < step && Math.abs(point.y - last.y) < step) return;
+            const next: MaskStroke = { mode: current.mode, points: [...current.points, point] };
+            liveRef.current = next;
+            setLive(next);
+            return;
+          }
+
+          // One finger, anything else: pan the photo. Only meaningful zoomed in,
+          // where clampPan leaves slack.
+          const next = clampPan(
+            { scale: g.start.scale, tx: g.start.tx + gs.dx, ty: g.start.ty + gs.dy },
+            canvasRef.current.width,
+            canvasRef.current.height,
+          );
+          viewRef.current = next;
+          setView(next);
         },
-        onPanResponderRelease: () => {
+
+        onPanResponderRelease: (e: GestureResponderEvent) => {
+          const g = gestureRef.current;
+          gestureRef.current = null;
           const current = liveRef.current;
           liveRef.current = null;
           setLive(null);
-          if (!current || current.points.length < 3) return;
-          haptics.tap();
-          setStrokes((prev) => [...prev, current]);
+
+          if (!g || g.pinching) return;
+
+          // A tap drops a corner (Corners) or asks the model to cut a wall out
+          // (Tap). Both fire on release and only when the finger stayed put, so
+          // a pan is never mistaken for either.
+          if (!g.moved) {
+            const point = toPhoto(
+              g.startX,
+              g.startY,
+              viewRef.current,
+              canvasRef.current.width,
+              canvasRef.current.height,
+            );
+            if (modeRef.current === 'points') {
+              haptics.tap();
+              setPoints((prev) => [...prev, point]);
+              return;
+            }
+            if (modeRef.current === 'detect') {
+              // Held in a ref because this responder is built once and cannot
+              // see a fresh detectAt.
+              detectRef.current?.(point);
+              return;
+            }
+          }
+
+          if (modeRef.current === 'draw' && current && current.points.length >= 3) {
+            haptics.tap();
+            setStrokes((prev) => [...prev, current]);
+          }
         },
       }),
     [],
   );
 
+  /** Corners become a closed polygon — the same shape a freehand trace makes. */
+  const pointStroke: MaskStroke | null = useMemo(
+    () => (points.length >= 3 ? { mode: 'add', points } : null),
+    [points],
+  );
+
+  function zoomBy(factor: number) {
+    const next = clampPan(
+      { scale: clampScale(viewRef.current.scale * factor), tx: viewRef.current.tx, ty: viewRef.current.ty },
+      canvasRef.current.width,
+      canvasRef.current.height,
+    );
+    viewRef.current = next;
+    setView(next);
+    haptics.tap();
+  }
+
   const paths = useMemo(() => {
-    const all = live ? [...strokes, live] : strokes;
+    const all = [...strokes, ...(pointStroke ? [pointStroke] : []), ...(live ? [live] : [])];
     return all.map((stroke, i) => {
       const path = Skia.Path.Make();
       stroke.points.forEach((p, j) => {
@@ -200,23 +440,43 @@ export function MaskStudioSheet({
       path.close();
       return { key: `${i}-${stroke.points.length}`, path, mode: stroke.mode };
     });
-  }, [strokes, live, canvas.width, canvas.height]);
+  }, [strokes, pointStroke, live, canvas.width, canvas.height]);
 
-  const drawn = strokes.some((s) => s.mode === 'add');
+  /** Everything that will be rasterized: traced strokes plus the corner shape. */
+  const savable: MaskStroke[] = useMemo(
+    () => (pointStroke ? [...strokes, pointStroke] : strokes),
+    [strokes, pointStroke],
+  );
+  const drawn = savable.some((s) => s.mode === 'add');
 
   function undo() {
     haptics.tap();
-    setStrokes((prev) => prev.slice(0, -1));
+    // Undo whichever mode the user is actually in, so the button never removes
+    // work they cannot see.
+    if (mode === 'points') setPoints((prev) => prev.slice(0, -1));
+    else setStrokes((prev) => prev.slice(0, -1));
   }
+
+  function clearAll() {
+    haptics.tap();
+    setStrokes([]);
+    setPoints([]);
+  }
+
+  const undoable = mode === 'points' ? points.length > 0 : strokes.length > 0;
 
   // ── Saving ───────────────────────────────────────────────────────────────
   async function saveDrawing() {
     if (!photo) return;
     const label = editTarget?.label ?? nextLabel();
     setError(null);
-    const maskBase64 = rasterizeMask(strokes, photo.width(), photo.height());
+    const maskBase64 = rasterizeMask(savable, photo.width(), photo.height());
     if (!maskBase64) {
-      setError('Trace right around a wall first — a closed shape, back to where you started.');
+      setError(
+        mode === 'points'
+          ? 'Place at least three corners around the wall first.'
+          : 'Trace right around a wall first — a closed shape, back to where you started.',
+      );
       return;
     }
     setBusy(editTarget ? 'Replacing that wall…' : 'Saving that wall…');
@@ -240,10 +500,18 @@ export function MaskStudioSheet({
     return `Wall ${regionCount + 1}`;
   }
 
-  async function detectAt(e: GestureResponderEvent) {
+  /**
+   * The current detectAt, reachable from the pan responder.
+   *
+   * The responder is built once, so it cannot close over a function that reads
+   * `busy` or `photo`; without this indirection it would forever call the first
+   * render's version and think the sheet was never busy.
+   */
+  const detectRef = useRef<((p: { x: number; y: number }) => void) | null>(null);
+  detectRef.current = detectAt;
+
+  async function detectAt({ x, y }: { x: number; y: number }) {
     if (!photo || busy) return;
-    const x = clamp01(e.nativeEvent.locationX / canvas.width);
-    const y = clamp01(e.nativeEvent.locationY / canvas.height);
     setError(null);
     setNote(null);
     setBusy('Cutting out that wall…');
@@ -284,7 +552,7 @@ export function MaskStudioSheet({
           <Text variant="heading" numberOfLines={1} style={styles.barTitle}>
             {editTarget ? `Redraw ${editTarget.label}` : 'Mark a wall'}
           </Text>
-          {mode === 'draw' ? (
+          {mode !== 'detect' ? (
             <PressableScale
               onPress={saveDrawing}
               disabled={!drawn || !!busy}
@@ -303,14 +571,17 @@ export function MaskStudioSheet({
           )}
         </View>
 
-        <ScrollView
-          contentContainerStyle={[styles.body, bodyPad]}
-          showsVerticalScrollIndicator={false}
-          // Scrolling stays on so nothing below the photo can be trapped off
-          // screen on a small phone. A trace does not turn into a scroll
-          // because the canvas refuses to hand the gesture back once it has it
-          // (onPanResponderTerminationRequest).
-        >
+        {/* Fixed region: how you are marking, what to do, and the photo itself.
+            None of it scrolls.
+
+            The photo used to live inside the scroll view with everything else,
+            which made it a moving target. Tracing a wall meant fighting the
+            scroll for the gesture; tapping one meant hitting a photo that could
+            have shifted since you looked at it. Pinning the photo removes the
+            contention rather than arbitrating it — the drawing canvas and the
+            detect overlay are now the only things that can claim a touch in
+            this area, because there is no scroll here to claim it first. */}
+        <View style={styles.fixed}>
           <Segmented
             options={MODE_OPTIONS}
             value={mode}
@@ -324,14 +595,18 @@ export function MaskStudioSheet({
 
           <Text variant="bodySoft">
             {mode === 'detect'
-              ? 'Tap the middle of a wall and we cut it out for you.'
-              : editTarget
-                ? `Trace ${editTarget.label} again with a finger — the new outline replaces the old one.`
+              ? 'Tap the middle of a wall and we cut it out for you. Pinch to zoom in first if the wall is small.'
+              : mode === 'points'
+                ? 'Tap each corner of the wall, going around it. Three or more closes the shape. Pinch to zoom for tight corners.'
                 : 'Trace right around the wall with a finger. Close the loop — it does not have to be neat.'}
           </Text>
 
-          {/* The photo, at its own shape and sized so the whole wall is
-              reachable without scrolling mid-trace. */}
+          {/* The photo, at its own shape, at three fifths of the screen.
+
+              The zoom lives on this wrapper rather than inside the Skia canvas
+              so that one transform moves the photo, the outline and the corner
+              handles together. Scaling them separately is how a mask ends up
+              drawn a few pixels off the wall it was aimed at. */}
           <View style={styles.stage}>
             {!ready ? (
               <View style={styles.stageEmpty}>
@@ -340,47 +615,72 @@ export function MaskStudioSheet({
             ) : (
               <View
                 style={[styles.canvasFrame, { width: canvas.width, height: canvas.height }]}
-                {...(mode === 'draw' ? pan.panHandlers : {})}
+                {...pan.panHandlers}
               >
-                <Canvas style={StyleSheet.absoluteFill}>
-                  <SkiaImage
-                    image={photo}
-                    fit="contain"
-                    x={0}
-                    y={0}
-                    width={canvas.width}
-                    height={canvas.height}
-                  />
-                  {paths.map((p) => (
-                    <Path
-                      key={p.key}
-                      path={p.path}
-                      color={p.mode === 'add' ? SELECT_BLUE : REMOVE_RED}
-                      style="fill"
-                      opacity={0.42}
+                <View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { transform: [{ translateX: view.tx }, { translateY: view.ty }, { scale: view.scale }] },
+                  ]}
+                >
+                  <Canvas style={StyleSheet.absoluteFill}>
+                    <SkiaImage
+                      image={photo}
+                      fit="contain"
+                      x={0}
+                      y={0}
+                      width={canvas.width}
+                      height={canvas.height}
                     />
-                  ))}
-                  {paths.map((p) => (
-                    <Path
-                      key={`${p.key}-edge`}
-                      path={p.path}
-                      color={p.mode === 'add' ? SELECT_BLUE : REMOVE_RED}
-                      style="stroke"
-                      strokeWidth={2}
-                    />
-                  ))}
-                </Canvas>
 
-                {/* Detection taps go through a plain overlay rather than the
-                    pan responder — a tap is not a trace and should not have to
-                    survive one. */}
-                {mode === 'detect' ? (
-                  <View
-                    style={StyleSheet.absoluteFill}
-                    onStartShouldSetResponder={() => true}
-                    onResponderRelease={detectAt}
-                  />
-                ) : null}
+                    {/* The mask this wall has now, faint underneath, so the new
+                        outline can be judged against the one it replaces. */}
+                    {existingMask && showExisting ? (
+                      <SkiaImage
+                        image={existingMask}
+                        fit="contain"
+                        x={0}
+                        y={0}
+                        width={canvas.width}
+                        height={canvas.height}
+                        opacity={0.32}
+                      />
+                    ) : null}
+                    {paths.map((p) => (
+                      <Path
+                        key={p.key}
+                        path={p.path}
+                        color={p.mode === 'add' ? SELECT_BLUE : REMOVE_RED}
+                        style="fill"
+                        opacity={0.42}
+                      />
+                    ))}
+                    {paths.map((p) => (
+                      <Path
+                        key={`${p.key}-edge`}
+                        path={p.path}
+                        color={p.mode === 'add' ? SELECT_BLUE : REMOVE_RED}
+                        style="stroke"
+                        strokeWidth={2 / view.scale}
+                      />
+                    ))}
+
+                    {/* Corner handles. Drawn at a constant screen size by
+                        dividing out the zoom — a handle that grows with the
+                        photo would swallow the very corner it is marking. */}
+                    {mode === 'points'
+                      ? points.map((p, i) => (
+                          <Circle
+                            key={`corner-${i}`}
+                            cx={p.x * canvas.width}
+                            cy={p.y * canvas.height}
+                            r={HANDLE_R / view.scale}
+                            color={i === 0 ? '#fff' : SELECT_BLUE}
+                          />
+                        ))
+                      : null}
+                  </Canvas>
+                </View>
 
                 {busy ? (
                   <View style={styles.busy}>
@@ -393,38 +693,87 @@ export function MaskStudioSheet({
               </View>
             )}
           </View>
+        </View>
 
-          {mode === 'draw' ? (
-            <View style={styles.tools}>
-              <Chip label="Add" selected={!erasing} onPress={() => setErasing(false)} />
-              <Chip label="Rub out" selected={erasing} onPress={() => setErasing(true)} />
-              <View style={styles.toolSpacer} />
-              <PressableScale
-                onPress={undo}
-                disabled={strokes.length === 0}
-                haptic="none"
-                activeScale={0.92}
-                accessibilityRole="button"
-                accessibilityLabel="Undo the last outline"
-                style={StyleSheet.flatten([styles.toolButton, strokes.length === 0 && styles.chipDisabled])}
-              >
-                <Ionicons name="arrow-undo-outline" size={17} color={colors.fg} />
-              </PressableScale>
-              <PressableScale
-                onPress={() => setStrokes([])}
-                disabled={strokes.length === 0}
-                haptic="tap"
-                activeScale={0.92}
-                accessibilityRole="button"
-                accessibilityLabel="Clear everything drawn"
-                style={StyleSheet.flatten([styles.toolButton, strokes.length === 0 && styles.chipDisabled])}
-              >
-                <Ionicons name="trash-outline" size={17} color={colors.fg} />
-              </PressableScale>
-            </View>
-          ) : null}
+        {/* Everything below the photo scrolls, so a small phone can still reach
+            the category chips and the save button. */}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.body, bodyPad]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Zoom, undo, clear — and, while redrawing, whether the old mask is
+              visible underneath. Always present, because zoom applies to every
+              mode including Tap. */}
+          <View style={styles.tools}>
+            {mode === 'draw' ? (
+              <>
+                <Chip label="Add" selected={!erasing} onPress={() => setErasing(false)} />
+                <Chip label="Rub out" selected={erasing} onPress={() => setErasing(true)} />
+              </>
+            ) : null}
 
-          {mode === 'draw' && !editTarget ? (
+            {existingMask ? (
+              <Chip
+                label={showExisting ? 'Old mask on' : 'Old mask off'}
+                selected={showExisting}
+                onPress={() => setShowExisting((s) => !s)}
+              />
+            ) : null}
+
+            <View style={styles.toolSpacer} />
+
+            <PressableScale
+              onPress={() => zoomBy(1 / 1.6)}
+              disabled={view.scale <= MIN_SCALE}
+              haptic="none"
+              activeScale={0.92}
+              accessibilityRole="button"
+              accessibilityLabel="Zoom out"
+              style={StyleSheet.flatten([styles.toolButton, view.scale <= MIN_SCALE && styles.chipDisabled])}
+            >
+              <Ionicons name="remove" size={17} color={colors.fg} />
+            </PressableScale>
+            <PressableScale
+              onPress={() => zoomBy(1.6)}
+              disabled={view.scale >= MAX_SCALE}
+              haptic="none"
+              activeScale={0.92}
+              accessibilityRole="button"
+              accessibilityLabel="Zoom in"
+              style={StyleSheet.flatten([styles.toolButton, view.scale >= MAX_SCALE && styles.chipDisabled])}
+            >
+              <Ionicons name="add" size={17} color={colors.fg} />
+            </PressableScale>
+
+            <PressableScale
+              onPress={undo}
+              disabled={!undoable}
+              haptic="none"
+              activeScale={0.92}
+              accessibilityRole="button"
+              accessibilityLabel={mode === 'points' ? 'Undo the last corner' : 'Undo the last outline'}
+              style={StyleSheet.flatten([styles.toolButton, !undoable && styles.chipDisabled])}
+            >
+              <Ionicons name="arrow-undo-outline" size={17} color={colors.fg} />
+            </PressableScale>
+            <PressableScale
+              onPress={clearAll}
+              disabled={strokes.length === 0 && points.length === 0}
+              haptic="tap"
+              activeScale={0.92}
+              accessibilityRole="button"
+              accessibilityLabel="Clear everything marked"
+              style={StyleSheet.flatten([
+                styles.toolButton,
+                strokes.length === 0 && points.length === 0 && styles.chipDisabled,
+              ])}
+            >
+              <Ionicons name="trash-outline" size={17} color={colors.fg} />
+            </PressableScale>
+          </View>
+
+          {mode !== 'detect' && !editTarget ? (
             <View style={styles.group}>
               <Text variant="overline">What is it?</Text>
               <View style={styles.categories}>
@@ -446,15 +795,17 @@ export function MaskStudioSheet({
                 {error}
               </Text>
               {/* The way through, named. Detection failing is not the end of the
-                  road — drawing needs no model and cannot be refused. */}
+                  road — neither of the by-hand modes needs a model, so neither
+                  can be refused. Corners leads: for a wall, which is usually a
+                  quadrilateral, four taps beat tracing the whole outline. */}
               {mode === 'detect' ? (
                 <Button
-                  label="Draw the wall myself instead"
+                  label="Mark the corners myself instead"
                   variant="secondary"
                   fullWidth
-                  icon={<Ionicons name="brush-outline" size={16} color={colors.fg} />}
+                  icon={<Ionicons name="git-commit-outline" size={16} color={colors.fg} />}
                   onPress={() => {
-                    setMode('draw');
+                    setMode('points');
                     setError(null);
                   }}
                 />
@@ -466,9 +817,15 @@ export function MaskStudioSheet({
             </Text>
           ) : null}
 
-          {mode === 'draw' ? (
+          {mode !== 'detect' ? (
             <Button
-              label={editTarget ? 'Replace this wall’s outline' : 'Save this wall'}
+              label={
+                editTarget
+                  ? 'Replace this wall’s outline'
+                  : mode === 'points'
+                    ? `Save this wall${points.length > 0 ? ` (${points.length} corners)` : ''}`
+                    : 'Save this wall'
+              }
               size="lg"
               fullWidth
               disabled={!drawn}
@@ -533,7 +890,9 @@ const styles = StyleSheet.create({
     borderColor: alpha(colors.accentSoft, 0.3),
   },
   chipDisabled: { opacity: 0.4 },
-  body: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  fixed: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  scroll: { flex: 1 },
+  body: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingTop: spacing.md },
   group: { gap: spacing.sm },
   stage: { minHeight: 260, alignItems: 'center', justifyContent: 'center' },
   stageEmpty: { height: 260, alignItems: 'center', justifyContent: 'center' },

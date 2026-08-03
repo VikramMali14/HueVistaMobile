@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Chip, Input, PressableScale, Segmented, Text } from '../components';
+import { Button, Chip, Input, PressableScale, Segmented, SheetModal, Text } from '../components';
 import { colors, spacing, radius, alpha } from '../theme';
 import { useShadeFamilies, useShadesInfinite } from '../shades/queries';
 import { useAllowedBrands, useShadeCodeScheme } from '../account/queries';
@@ -21,9 +28,23 @@ const DEPTH_OPTIONS: readonly { value: DepthFilter; label: string }[] = [
   { value: 'dark', label: DEPTH_LABEL.dark },
 ];
 
-/** Swatches per row, and how many more "Show more" reveals each time. */
+/** Swatches per row, and how many more each scroll to the end reveals. */
 const COLUMNS = 4;
 const PAGE_STEP = COLUMNS * 3;
+
+/**
+ * How tall the swatch area is allowed to get before it scrolls on its own.
+ *
+ * The grid used to grow the page instead, which meant the wall being painted
+ * slid off the top as soon as a few rows were revealed — the one thing the
+ * catalogue is not allowed to do. Bounding it keeps the room and the colours on
+ * screen together, and gives the list somewhere to scroll so more can arrive
+ * without a button asking for permission.
+ */
+const GRID_MAX_HEIGHT = 300;
+
+/** How close to the end of the list counts as "ready for more" (px). */
+const LOAD_MORE_SLACK = 120;
 
 export interface ColourPanelProps {
   /** Applies the shade to whatever is selected. */
@@ -57,6 +78,8 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
   const [depth, setDepth] = useState<DepthFilter>('all');
   const [searchInput, setSearchInput] = useState('');
   const [visible, setVisible] = useState(PAGE_STEP);
+  /** Company, search, depth and family all live behind this now. */
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const search = useDebouncedValue(searchInput.trim());
 
   // Tile width is measured rather than expressed as a percentage: four columns
@@ -102,11 +125,28 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
   }
 
   function showMore() {
+    if (!canShowMore) return;
     setVisible((n) => n + PAGE_STEP);
     if (!moreLocally && shadesQuery.hasNextPage && !shadesQuery.isFetchingNextPage) {
       shadesQuery.fetchNextPage();
     }
   }
+
+  /**
+   * Reveal more as the list reaches its end, rather than asking for a tap.
+   *
+   * Scrolling already means "show me what's next"; a button under the grid made
+   * the user say it twice. `onScroll` is throttled because this fires on every
+   * frame of a flick and each call can start a page fetch.
+   */
+  function onGridScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+    const distanceToEnd = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    if (distanceToEnd < LOAD_MORE_SLACK) showMore();
+  }
+
+  /** How many filters are narrowing the list right now — shown on the button. */
+  const activeFilters = (family ? 1 : 0) + (depth === 'all' ? 0 : 1) + (search ? 1 : 0);
 
   return (
     <View style={styles.root}>
@@ -130,18 +170,50 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
         </View>
       ) : null}
 
-      {allowed.brands.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-          {allowed.brands.map((b) => (
-            <Chip
-              key={b.slug}
-              label={b.name}
-              selected={activeCompany?.slug === b.slug}
-              onPress={() => refilter(() => setCompany(b))}
-            />
-          ))}
-        </ScrollView>
-      ) : null}
+      {/* One compact line where four stacked controls used to be: which company
+          is being shown, and one way in to everything that narrows it. The
+          company picker, the search box, the depth segments and the family chips
+          took up more vertical space than the swatches did — on a small phone
+          the colours themselves started below the fold. */}
+      <View style={styles.bar}>
+        <PressableScale
+          onPress={() => setFiltersOpen(true)}
+          haptic="tap"
+          activeScale={0.97}
+          accessibilityRole="button"
+          accessibilityLabel="Choose a company, search, or filter the colours"
+          style={styles.barMain}
+        >
+          <Text variant="label" numberOfLines={1} color={colors.fg} style={styles.barLabel}>
+            {activeCompany?.name ?? (allowed.loading ? 'Loading companies…' : 'Choose a company')}
+          </Text>
+          <Ionicons name="chevron-down" size={14} color={colors.fgMute} />
+        </PressableScale>
+
+        <PressableScale
+          onPress={() => setFiltersOpen(true)}
+          haptic="tap"
+          activeScale={0.92}
+          accessibilityRole="button"
+          accessibilityLabel={
+            activeFilters > 0 ? `Filters, ${activeFilters} active` : 'Search and filter the colours'
+          }
+          style={StyleSheet.flatten([styles.barIcon, activeFilters > 0 && styles.barIconActive])}
+        >
+          <Ionicons
+            name={activeFilters > 0 ? 'funnel' : 'search'}
+            size={16}
+            color={activeFilters > 0 ? colors.accentSoft : colors.fgSoft}
+          />
+          {activeFilters > 0 ? (
+            <View style={styles.badge}>
+              <Text variant="caption" color={colors.bg}>
+                {activeFilters}
+              </Text>
+            </View>
+          ) : null}
+        </PressableScale>
+      </View>
 
       {!activeCompany ? (
         <Text variant="bodySoft" style={styles.empty}>
@@ -152,33 +224,14 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
               : 'Choose a company to see its colours.'}
         </Text>
       ) : (
-        <>
-          <Input
-            placeholder="Search name or code"
-            value={searchInput}
-            onChangeText={(t) => refilter(() => setSearchInput(t))}
-            autoCapitalize="none"
-          />
-          <Segmented
-            options={DEPTH_OPTIONS}
-            value={depth}
-            onChange={(d) => refilter(() => setDepth(d))}
-            accessibilityLabel="Filter by how light or dark the shade is"
-          />
-          {(familiesQuery.data?.length ?? 0) > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-              <Chip label="All families" selected={!family} onPress={() => refilter(() => setFamily(undefined))} />
-              {familiesQuery.data?.map((f) => (
-                <Chip
-                  key={f}
-                  label={f}
-                  selected={family === f}
-                  onPress={() => refilter(() => setFamily(f))}
-                />
-              ))}
-            </ScrollView>
-          ) : null}
-
+        <ScrollView
+          style={styles.gridScroll}
+          contentContainerStyle={styles.gridContent}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          onScroll={onGridScroll}
+          scrollEventThrottle={80}
+        >
           <View style={styles.grid} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
             {shadesQuery.isLoading ? (
               <View style={styles.centre}>
@@ -203,22 +256,65 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
             ) : null}
           </View>
 
-          {canShowMore && shown.length > 0 ? (
-            <PressableScale onPress={showMore} haptic="tap" activeScale={0.97} style={styles.more}>
-              {shadesQuery.isFetchingNextPage ? (
-                <ActivityIndicator color={colors.accentSoft} />
-              ) : (
-                <>
-                  <Text variant="label" color={colors.accentSoft}>
-                    Show more colours
-                  </Text>
-                  <Ionicons name="chevron-down" size={15} color={colors.accentSoft} />
-                </>
-              )}
-            </PressableScale>
+          {/* A spinner at the tail, where the next rows will appear — not a
+              control, just a sign that more is on the way. */}
+          {shadesQuery.isFetchingNextPage ? (
+            <View style={styles.tail}>
+              <ActivityIndicator color={colors.accentSoft} />
+            </View>
           ) : null}
-        </>
+        </ScrollView>
       )}
+
+      {/* Everything that narrows the list, in one sheet over the room rather
+          than pushing it down the page. */}
+      <SheetModal visible={filtersOpen} onClose={() => setFiltersOpen(false)} title="Find a colour">
+        <View style={styles.filterSheet}>
+          {allowed.brands.length > 1 ? (
+            <View style={styles.group}>
+              <Text variant="overline">Company</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
+                {allowed.brands.map((b) => (
+                  <Chip
+                    key={b.slug}
+                    label={b.name}
+                    selected={activeCompany?.slug === b.slug}
+                    onPress={() => refilter(() => setCompany(b))}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <Input
+            placeholder="Search name or code"
+            value={searchInput}
+            onChangeText={(t) => refilter(() => setSearchInput(t))}
+            autoCapitalize="none"
+          />
+
+          <Segmented
+            options={DEPTH_OPTIONS}
+            value={depth}
+            onChange={(d) => refilter(() => setDepth(d))}
+            accessibilityLabel="Filter by how light or dark the shade is"
+          />
+
+          {(familiesQuery.data?.length ?? 0) > 0 ? (
+            <View style={styles.group}>
+              <Text variant="overline">Family</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
+                <Chip label="All families" selected={!family} onPress={() => refilter(() => setFamily(undefined))} />
+                {familiesQuery.data?.map((f) => (
+                  <Chip key={f} label={f} selected={family === f} onPress={() => refilter(() => setFamily(f))} />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <Button label="Show colours" fullWidth onPress={() => setFiltersOpen(false)} />
+        </View>
+      </SheetModal>
     </View>
   );
 }
@@ -277,6 +373,48 @@ const styles = StyleSheet.create({
   root: { gap: spacing.md },
   group: { gap: spacing.sm },
   strip: { gap: spacing.sm, paddingVertical: 2 },
+  bar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  barMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    height: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.button,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.rule,
+  },
+  barLabel: { flexShrink: 1 },
+  barIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.rule,
+  },
+  barIconActive: { backgroundColor: colors.accentGhost, borderColor: alpha(colors.accentSoft, 0.4) },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridScroll: { maxHeight: GRID_MAX_HEIGHT },
+  gridContent: { gap: spacing.sm, paddingBottom: spacing.xs },
+  tail: { paddingVertical: spacing.md, alignItems: 'center' },
+  filterSheet: { gap: spacing.md },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, minHeight: 40 },
   tile: { alignItems: 'center', gap: spacing.xs },
   tileDisabled: { opacity: 0.45 },
@@ -293,15 +431,4 @@ const styles = StyleSheet.create({
   tileLabel: { textAlign: 'center' },
   centre: { paddingVertical: spacing.xl, alignItems: 'center' },
   empty: { paddingVertical: spacing.sm },
-  more: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    height: 44,
-    borderRadius: radius.button,
-    backgroundColor: colors.accentGhost,
-    borderWidth: 1,
-    borderColor: alpha(colors.accentSoft, 0.28),
-  },
 });
