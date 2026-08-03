@@ -22,9 +22,19 @@ import { haptics } from '../haptics';
  * after the user already knows they tapped; firing on contact is the part that
  * reads as responsiveness. It fires even if the press is later cancelled by a
  * drag, which is correct — the touch did happen.
+ *
+ * `style` lands on the pressable itself rather than on an inner wrapper. That
+ * matters for layout, not just tidiness: with the style on a child, a
+ * `flex: 1` handed to a grid cell applied to the wrapper while the Pressable
+ * sized itself to its content, so a two-column catalogue laid out columns as
+ * wide as each shade's name — "Champagne Wash" came out visibly wider than
+ * "Linen Fold". Animating the Pressable keeps the transform and the layout on
+ * one element.
  */
 
 type HapticIntent = 'tap' | 'press' | 'select' | 'none';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export interface PressableScaleProps extends Omit<PressableProps, 'style'> {
   /** Optional: a bare colour swatch is a valid target with nothing inside it. */
@@ -34,8 +44,6 @@ export interface PressableScaleProps extends Omit<PressableProps, 'style'> {
   /** Which haptic fires on contact. `none` for rows that already trigger one. */
   haptic?: HapticIntent;
   style?: StyleProp<ViewStyle>;
-  /** Applied on top of `style` while pressed. */
-  pressedStyle?: StyleProp<ViewStyle>;
 }
 
 export function PressableScale({
@@ -43,7 +51,6 @@ export function PressableScale({
   activeScale = 0.97,
   haptic = 'tap',
   style,
-  pressedStyle,
   onPressIn,
   onPressOut,
   disabled,
@@ -67,17 +74,14 @@ export function PressableScale({
   };
 
   return (
-    <Pressable
+    <AnimatedPressable
       onPressIn={disabled ? undefined : handleIn}
       onPressOut={disabled ? undefined : handleOut}
       disabled={disabled}
+      style={[style, { transform: [{ scale }] }]}
       {...rest}
     >
-      {({ pressed }) => (
-        <Animated.View style={[style, { transform: [{ scale }] }, pressed ? pressedStyle : null]}>
-          {children}
-        </Animated.View>
-      )}
-    </Pressable>
+      {children}
+    </AnimatedPressable>
   );
 }

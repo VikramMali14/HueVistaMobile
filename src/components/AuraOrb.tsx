@@ -176,6 +176,33 @@ function WebOrb({ size, color }: { size: number; color: string }) {
  * already arrives inside a `Reveal`. It redraws when the value changes.
  */
 function ProgressRing({ size, color, value }: { size: number; color: string; value: number }) {
+  if (Platform.OS === 'web') return <WebRing size={size} color={color} />;
+  return <SkiaRing size={size} color={color} value={value} />;
+}
+
+/**
+ * Split from `ProgressRing` rather than guarded inside it. Hooks run before any
+ * conditional return, so building the path in this component's body executed
+ * `Skia.Path.Make()` on web too — where Skia is a CanvasKit shim this app never
+ * bootstraps, so it is undefined and the whole screen threw. The platform check
+ * has to happen before the hook, which means before this component mounts.
+ */
+function WebRing({ size, color }: { size: number; color: string }) {
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: RING_WIDTH,
+        borderColor: alpha(color, 0.28),
+      }}
+    />
+  );
+}
+
+function SkiaRing({ size, color, value }: { size: number; color: string; value: number }) {
   const r = size / 2 - RING_WIDTH;
   const path = useMemo(() => {
     const p = Skia.Path.Make();
@@ -188,21 +215,6 @@ function ProgressRing({ size, color, value }: { size: number; color: string; val
   // expects; the dot is computed in the same rotated space.
   const angle = value * Math.PI * 2 - Math.PI / 2;
   const dot = vec(size / 2 + r * Math.cos(angle), size / 2 + r * Math.sin(angle));
-
-  if (Platform.OS === 'web') {
-    return (
-      <View
-        style={{
-          position: 'absolute',
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: RING_WIDTH,
-          borderColor: alpha(color, 0.28),
-        }}
-      />
-    );
-  }
 
   return (
     <Canvas style={[StyleSheet.absoluteFill, { width: size, height: size }]} pointerEvents="none">
