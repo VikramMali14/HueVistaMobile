@@ -40,6 +40,7 @@ import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
 import { shadeDisplay } from '../../src/shades/shadeCodes';
 import { ShadePickerSheet } from '../../src/shades/ShadePickerSheet';
 import { useRecentShades } from '../../src/shades/recentShades';
+import { tapToPhotoPoint } from '../../src/projects/tapPoint';
 import { RecommendationsSheet } from '../../src/projects/RecommendationsSheet';
 import {
   useProjectPurchaseOptions,
@@ -109,6 +110,15 @@ export default function ProjectEditor() {
 
   // Marking walls by hand: free on every plan, and the way through when AI
   // wall-detection isn't available. A tap on the photo segments that surface.
+  //
+  // `marking` only arms the canvas once there ARE walls, where a stray tap
+  // would cut out a surface the user was only trying to select. With none yet,
+  // tapping the photo is the entire job and arming it behind a toggle is what
+  // made this look broken: choosing "Mark walls myself" set the flag before the
+  // photo had even finished cleaning, so the one prominent button on the ready
+  // screen read "Done marking" — press it, as its prominence invites, and every
+  // subsequent tap on the photo went nowhere and said nothing. Leaving the
+  // screen reset the flag and killed the photo again just as silently.
   const [marking, setMarking] = useState(false);
   const [markBusy, setMarkBusy] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
@@ -138,6 +148,11 @@ export default function ProjectEditor() {
 
   const canvasW = Math.round(width - spacing.lg * 2);
   const canvasH = Math.round((canvasW * 3) / 4);
+
+  /** The photo is markable at all: editable, and past wall detection. */
+  const canMark = !readOnly && status === 'SEGMENTED';
+  /** A tap right now will cut out a wall. */
+  const armed = canMark && (regions.length === 0 || marking);
 
   function appliedColor(regionId: number, persistedHex?: string | null): Applied | null {
     if (overrides[regionId]) return overrides[regionId];
@@ -330,37 +345,59 @@ export default function ProjectEditor() {
   }
 
   /**
-   * Mark a wall by tapping it. The tap's position on the canvas becomes
-   * normalized (0–1) image coordinates and SAM 2 segments that surface.
+   * Mark a wall by tapping it. The tap becomes normalized (0–1) photo
+   * coordinates and SAM 2 segments that surface.
    *
-   * The canvas draws the photo with `fit="cover"`, so the on-screen box may crop
-   * the image; the tap is mapped back through the same fit, otherwise every tap
-   * on a non-matching aspect ratio would land on the wrong part of the photo.
+   * Every branch out of here says something. A tap that lands on the cropped
+   * part of the photo, or on a canvas that is not armed, used to return
+   * silently — which is indistinguishable from the feature being broken.
    */
   async function markWallAt(event: GestureResponderEvent) {
-    if (!marking || markBusy || readOnly) return;
+    if (markBusy) return;
+    if (!canMark) return;
+    if (!armed) {
+      setMarkError('Tap “Mark another wall” first, then tap the wall you want.');
+      return;
+    }
+
     const { locationX, locationY } = event.nativeEvent;
-    const photoAspect = photo ? photo.width() / photo.height() : canvasW / canvasH;
-    const boxAspect = canvasW / canvasH;
-    // "cover": the image fills the box and overflows on the longer axis.
-    const drawnW = photoAspect > boxAspect ? canvasH * photoAspect : canvasW;
-    const drawnH = photoAspect > boxAspect ? canvasH : canvasW / photoAspect;
-    const x = (locationX + (drawnW - canvasW) / 2) / drawnW;
-    const y = (locationY + (drawnH - canvasH) / 2) / drawnH;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    const point = tapToPhotoPoint({
+      locationX,
+      locationY,
+      boxWidth: canvasW,
+      boxHeight: canvasH,
+      photoWidth: photo?.width(),
+      photoHeight: photo?.height(),
+    });
+    if (!point) {
+      setMarkError('That spot is outside the photo. Tap somewhere on the room.');
+      return;
+    }
 
     setMarkBusy(true);
     setMarkError(null);
     haptics.impact('heavy');
     try {
-      const region = await projectsApi.segmentPoint(id, x, y, `Wall ${regions.length + 1}`);
+      const region = await projectsApi.segmentPoint(id, point.x, point.y, `Wall ${regions.length + 1}`);
       await queryClient.invalidateQueries({ queryKey: ['projects', id] });
       setSelectedRegionId(region.id);
+      // Stay armed. The first wall takes the region count off zero, which is
+      // what was keeping the canvas live — without this the room would go dead
+      // the moment the user succeeded, which is the worst possible moment.
+      setMarking(true);
       haptics.success();
     } catch (err) {
       haptics.error();
+      // A timeout aborts the fetch, which arrives as a network ApiError whose
+      // message is the raw "Aborted" — not a sentence to show anyone. Point
+      // segmentation is a live model call on a 60s budget, so this is the one
+      // failure here likely enough to name properly.
       setMarkError(
-        err instanceof ApiError ? err.message : 'Couldn’t mark that wall. Try tapping its middle.',
+        err instanceof ApiError && err.isNetwork
+          ? 'That took too long, or the connection dropped. Tap the wall again.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Couldn’t mark that wall. Try tapping its middle.',
       );
     } finally {
       setMarkBusy(false);
@@ -467,7 +504,9 @@ export default function ProjectEditor() {
       {/* Canvas. In marking mode a tap segments the wall under the finger. */}
       <Pressable
         onPress={markWallAt}
-        disabled={!marking || markBusy || readOnly}
+        // Deliberately NOT disabled when unarmed: a dead Pressable swallows the
+        // tap, and `markWallAt` can explain instead.
+        disabled={!canMark || markBusy}
         style={[styles.canvasFrame, { height: canvasH }]}
       >
         <View ref={shotRef} collapsable={false} style={StyleSheet.absoluteFill}>
@@ -507,7 +546,7 @@ export default function ProjectEditor() {
               Marking that wall…
             </Text>
           </View>
-        ) : marking && !readOnly ? (
+        ) : armed ? (
           <View style={styles.markHint} pointerEvents="none">
             <Text variant="caption" color="#fff">
               Tap the middle of a wall to mark it
@@ -600,12 +639,9 @@ export default function ProjectEditor() {
                 : 'No walls were detected automatically. You can mark them yourself — tap a wall and we’ll cut it out.'}
             </Text>
           </Card>
-          <Button
-            label={marking ? 'Done marking' : 'Mark walls by tapping'}
-            size="lg"
-            fullWidth
-            onPress={() => setMarking((m) => !m)}
-          />
+          {/* No toggle here. With no walls yet the canvas is already armed and
+              carries its own hint bar, so a button whose only job is to enable
+              the thing the card just told you to do is a step in the way. */}
           {markError ? (
             <Text variant="body" color={colors.danger}>
               {markError}
@@ -660,9 +696,16 @@ export default function ProjectEditor() {
             <View style={styles.blockHead}>
               <Text variant="label">Wall</Text>
               {!readOnly ? (
-                <Pressable onPress={() => setMarking((m) => !m)} hitSlop={8}>
+                <Pressable
+                  onPress={() => {
+                    haptics.select();
+                    setMarkError(null);
+                    setMarking((m) => !m);
+                  }}
+                  hitSlop={8}
+                >
                   <Text variant="label" color={marking ? colors.accentSoft : colors.fgSoft}>
-                    {marking ? 'Done marking' : '+ Mark another wall'}
+                    {marking ? 'Tap a wall · cancel' : '+ Mark another wall'}
                   </Text>
                 </Pressable>
               ) : null}
