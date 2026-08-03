@@ -47,6 +47,19 @@ jobs:
           node-version: 20
           cache: npm
 
+      # expo-modules-jsi's Package.swift declares swift-tools-version 6.2, and
+      # the runner's default Xcode is older than that — package resolution fails
+      # with "package 'apple' is using Swift tools version 6.2.0 but the
+      # installed version is 6.1.0". Take the newest Xcode the image carries.
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          ls -d /Applications/Xcode*.app
+          newest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$newest/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
       - name: Install dependencies
         run: npm ci
 
