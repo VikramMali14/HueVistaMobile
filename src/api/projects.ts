@@ -28,6 +28,17 @@ export interface CreateProjectInput {
   notes?: string;
 }
 
+/** What the backend calls a region's category. MANUAL is the catch-all. */
+export type RegionCategory = 'MAIN_WALL' | 'ACCENT_WALL' | 'OTHER_WALL' | 'TRIM' | 'MANUAL';
+
+/** A mask the user drew by hand, ready to save as a region. */
+export interface CustomMaskInput {
+  /** Base64 PNG (bare or as a data URL): opaque = paint here, black = leave it. */
+  maskBase64: string;
+  category?: RegionCategory;
+  label?: string;
+}
+
 export const projectsApi = {
   create(input: CreateProjectInput): Promise<Project> {
     return apiFetch('/projects', { method: 'POST', json: input }).then((d) => projectSchema.parse(d));
@@ -69,6 +80,36 @@ export const projectsApi = {
       method: 'POST',
       json: { x, y, label },
       // Point segmentation is a synchronous model call; the default 20 s can be tight.
+      timeoutMs: 60_000,
+    }).then((d) => regionSchema.parse(d));
+  },
+
+  /**
+   * Save a wall the user outlined with a finger, as a region.
+   *
+   * No model call and no credit: the client sends the finished mask. That makes
+   * this the way through whenever AI detection is unavailable, out of credit or
+   * simply wrong about a wall — on the phone that used to be a dead end, since
+   * every wall had to come from SAM 2.
+   */
+  createCustomMaskRegion(id: string, input: CustomMaskInput): Promise<Region> {
+    return apiFetch(`/projects/${encodeURIComponent(id)}/regions/custom-mask`, {
+      method: 'POST',
+      json: input,
+      // A 1600px PNG over a phone connection; the default 20 s is tight.
+      timeoutMs: 60_000,
+    }).then((d) => regionSchema.parse(d));
+  },
+
+  /**
+   * Replace an existing region's mask with a hand-refined one. Allowed for
+   * AI-detected regions too — this is how a mask the model got wrong (half a
+   * pillar, an edge that overshoots) is fixed without a second AI call.
+   */
+  updateRegionMask(id: string, regionId: number, input: CustomMaskInput): Promise<Region> {
+    return apiFetch(`/projects/${encodeURIComponent(id)}/regions/${regionId}/mask`, {
+      method: 'PUT',
+      json: input,
       timeoutMs: 60_000,
     }).then((d) => regionSchema.parse(d));
   },

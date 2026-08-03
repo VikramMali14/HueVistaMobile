@@ -3,21 +3,30 @@ import {
   View,
   StyleSheet,
   Pressable,
-  ScrollView,
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useImage } from '@shopify/react-native-skia';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Text, Serif, Card, Button, StatusPill, AuthedImage, Reveal, PressableScale, SectionHeader } from '../components';
-import { ShadePickerSheet } from '../shades/ShadePickerSheet';
+import {
+  Screen,
+  Text,
+  Serif,
+  Card,
+  Button,
+  StatusPill,
+  AuthedImage,
+  Reveal,
+  PressableScale,
+  SectionHeader,
+} from '../components';
 import { useRecentShades } from '../shades/recentShades';
-import { inkOn, depthOf, DEPTH_LABEL } from '../shades/colorScience';
+import { depthOf, DEPTH_LABEL } from '../shades/colorScience';
 import type { StatusTone } from '../components';
 import { colors, spacing, radius, alpha, fontSize } from '../theme';
 import { haptics } from '../haptics';
-import { RecolorCanvas } from '../engine';
+import { fitBox, RecolorCanvas } from '../engine';
 import { SAMPLE_SHADES } from '../shades/sampleShades';
 import { Shade } from '../shades/types';
 import { shadeDisplay } from '../shades/shadeCodes';
@@ -25,6 +34,7 @@ import { useShadeCodeScheme } from '../account/queries';
 import { EntitlementCard } from '../account';
 import { useProjects } from '../projects/queries';
 import type { ProjectSummary } from '../api';
+import { ColourPanel } from './ColourPanel';
 
 function statusTone(status: string): StatusTone {
   switch (status) {
@@ -103,8 +113,7 @@ export function StudioScreen() {
 
   const [shade, setShade] = useState<Shade>(() => shadeFromParams() ?? SAMPLE_SHADES[5]);
   const [comparing, setComparing] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const { recent, remember } = useRecentShades();
+  const { remember } = useRecentShades();
 
   // Colours read the way this shop presents them: its own code pattern, and the
   // paint name only when the shop shows names.
@@ -114,7 +123,7 @@ export function StudioScreen() {
   const shadeDepth = depthOf({ hexCode: shade.hex });
 
   // Sync when a new shade is passed via params, by adjusting state during render
-  // (React's recommended pattern), while still letting the tray override locally.
+  // (React's recommended pattern), while still letting the dock override locally.
   const paramKey = `${params.code ?? ''}:${params.hex ?? ''}`;
   const [lastKey, setLastKey] = useState(paramKey);
   if (params.code && paramKey !== lastKey) {
@@ -130,8 +139,10 @@ export function StudioScreen() {
   const { data: projects, isLoading, isError } = useProjects();
   const rooms = projects ?? [];
 
-  const canvasWidth = Math.round(width - spacing.lg * 2);
-  const canvasHeight = Math.round((canvasWidth * 600) / 800);
+  // The sample room drives its own canvas, like every other photo in the app.
+  const canvas = fitBox(photo?.width(), photo?.height(), {
+    maxWidth: Math.round(width - spacing.lg * 2),
+  });
   const ready = !!photo && !!mask;
 
   function selectShade(next: Shade) {
@@ -164,15 +175,15 @@ export function StudioScreen() {
         trailing={<StatusPill label="Sample room" tone="neutral" />}
       />
 
-      <View style={[styles.canvasFrame, { height: canvasHeight }]}>
+      <View style={[styles.canvasFrame, { width: canvas.width, height: canvas.height }]}>
         {ready ? (
           <RecolorCanvas
             photo={photo}
             mask={mask}
             color={shade.hex}
             strength={comparing ? 0 : 1}
-            width={canvasWidth}
-            height={canvasHeight}
+            width={canvas.width}
+            height={canvas.height}
           />
         ) : (
           <View style={styles.loading}>
@@ -194,18 +205,11 @@ export function StudioScreen() {
         </Text>
       </Pressable>
 
-      {/* The applied colour, and the way to change it. Tapping the card opens
-          the whole catalogue rather than the twelve demo swatches that used to
-          be the only colours this screen could paint. */}
+      {/* What is on the wall right now. The colours that change it are directly
+          below, in the dock — they used to be behind a button that opened the
+          catalogue full-screen, which hid the very wall being painted. */}
       <Card accent={shade.hex}>
-        <PressableScale
-          onPress={() => setPickerOpen(true)}
-          haptic="tap"
-          activeScale={0.98}
-          accessibilityRole="button"
-          accessibilityLabel={`${display.label}. Choose a different colour.`}
-          style={styles.shadeRow}
-        >
+        <View style={styles.shadeRow}>
           <View
             style={[
               styles.selectedSwatch,
@@ -221,13 +225,7 @@ export function StudioScreen() {
               {display.code}
             </Text>
           </View>
-          <View style={styles.changeChip}>
-            <Ionicons name="color-palette-outline" size={16} color={colors.accentSoft} />
-            <Text variant="label" color={colors.accentSoft}>
-              Change
-            </Text>
-          </View>
-        </PressableScale>
+        </View>
 
         <View style={styles.shadeFacts}>
           {shadeDepth ? <StatusPill label={DEPTH_LABEL[shadeDepth]} tone="neutral" /> : null}
@@ -245,51 +243,10 @@ export function StudioScreen() {
         />
       </Card>
 
-      {/* Colours already used, for flipping between two candidates without
-          reopening the picker each time. */}
-      {recent.length > 0 ? (
-        <View style={styles.section}>
-          <SectionHeader title="Recently used" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tray}>
-            {recent.map((s) => {
-              const active = s.code === shade.code;
-              return (
-                <PressableScale
-                  key={`${s.brandSlug ?? ''}-${s.code}`}
-                  onPress={() => selectShade(s)}
-                  haptic="none"
-                  activeScale={0.9}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={shadeDisplay(scheme, { code: s.code, name: s.name }).label}
-                  style={styles.swatchButton}
-                >
-                  <View
-                    style={[
-                      styles.traySwatch,
-                      {
-                        backgroundColor: s.hex,
-                        // Lit by its own colour rather than ringed in accent
-                        // purple, which fought every warm shade.
-                        borderColor: active ? colors.fg : alpha(s.hex, 0.45),
-                        borderWidth: active ? 2 : 1,
-                        shadowColor: s.hex,
-                        shadowOpacity: active ? 0.85 : 0.3,
-                        shadowRadius: active ? 14 : 7,
-                      },
-                    ]}
-                  >
-                    {active ? <Ionicons name="checkmark" size={16} color={inkOn(s.hex).strong} /> : null}
-                  </View>
-                  <Text variant="caption" numberOfLines={1} style={styles.trayLabel}>
-                    {shadeDisplay(scheme, { code: s.code, name: s.name }).code}
-                  </Text>
-                </PressableScale>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : null}
+      {/* The catalogue, docked under the wall it paints. */}
+      <View style={styles.dock}>
+        <ColourPanel onPick={selectShade} selectedCode={shade.code} />
+      </View>
     </View>
   );
 
@@ -370,15 +327,6 @@ export function StudioScreen() {
           {samplePreview}
         </>
       )}
-
-      {/* Left open after a pick: the sample wall repaints live behind it, so
-          trying five colours is five taps rather than five reopenings. */}
-      <ShadePickerSheet
-        visible={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={selectShade}
-        selectedCode={shade.code}
-      />
     </Screen>
   );
 }
@@ -387,7 +335,6 @@ const styles = StyleSheet.create({
   content: { gap: spacing.xl, paddingTop: spacing.xl },
   head: { gap: spacing.xs },
   section: { gap: spacing.sm },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cta: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   ctaIcon: {
     width: 44,
@@ -399,6 +346,7 @@ const styles = StyleSheet.create({
   },
   ctaText: { flex: 1, gap: 2 },
   canvasFrame: {
+    alignSelf: 'center',
     borderRadius: radius.card,
     overflow: 'hidden',
     backgroundColor: colors.surface,
@@ -427,31 +375,16 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   shadeMeta: { flex: 1, gap: 2 },
-  changeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentGhost,
-    borderWidth: 1,
-    borderColor: alpha(colors.accentSoft, 0.3),
-  },
   shadeFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   sampleCta: { marginTop: spacing.md },
-  tray: { gap: spacing.md, paddingVertical: spacing.xs },
-  swatchButton: { width: 64, gap: spacing.xs, alignItems: 'center' },
-  traySwatch: {
-    width: 64,
-    height: 64,
+  dock: {
+    gap: spacing.md,
+    padding: spacing.md,
     borderRadius: radius.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassEdge,
   },
-  trayLabel: { textAlign: 'center' },
   center: { paddingVertical: spacing.xxl, alignItems: 'center' },
   list: { gap: spacing.md },
   thumb: {

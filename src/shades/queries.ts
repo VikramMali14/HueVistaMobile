@@ -67,6 +67,23 @@ export function useBrandPreview(brandSlug?: string, count = 6) {
   });
 }
 
+/**
+ * The catalogue shades nearest a colour, closest first (CIELAB ΔE, server-side).
+ *
+ * This is the colour finder's whole answer: a customer points at a colour in
+ * their own photo and gets shades they can actually buy. Scoped to a company
+ * when the shop only stocks one — the nearest match overall is no use if it is
+ * from a brand nobody behind the counter can sell.
+ */
+export function useShadeMatch(hex: string | null, brandSlug?: string, limit = 8) {
+  return useQuery({
+    queryKey: ['shades', 'match', hex, brandSlug ?? null, limit],
+    queryFn: () => shadesApi.match(hex as string, { brand: brandSlug, limit }),
+    enabled: !!hex,
+    staleTime: HOUR,
+  });
+}
+
 export function usePopularShades(limit = 10) {
   return useQuery({
     queryKey: ['shades', 'popular', limit],

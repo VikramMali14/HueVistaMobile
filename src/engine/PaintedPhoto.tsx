@@ -25,6 +25,13 @@ export interface PaintedPhotoProps {
   layers: PaintLayer[];
   width: number;
   height: number;
+  /**
+   * How the photo fills its box. `contain` shows all of it, which is what the
+   * editor wants now that it sizes the box from the photo — `cover` cropped a
+   * portrait room photo down to the middle band of the wall. Kept as an option
+   * for thumbnails, where filling a fixed tile matters more than completeness.
+   */
+  fit?: 'cover' | 'contain';
   style?: StyleProp<ViewStyle>;
 }
 
@@ -33,21 +40,33 @@ export interface PaintedPhotoProps {
  * on top, luminance preserved. Each layer loads its own mask and paints only
  * that wall (transparent elsewhere), so all applied colours show at once.
  */
-export function PaintedPhoto({ photo, layers, width, height, style }: PaintedPhotoProps) {
+export function PaintedPhoto({ photo, layers, width, height, fit = 'contain', style }: PaintedPhotoProps) {
   if (!photo) return null;
   return (
     <View style={[{ width, height }, style]}>
       <Canvas style={StyleSheet.absoluteFill}>
-        <Image image={photo} fit="cover" x={0} y={0} width={width} height={height} />
+        <Image image={photo} fit={fit} x={0} y={0} width={width} height={height} />
       </Canvas>
       {layers.map((layer) => (
-        <RegionOverlay key={layer.key} photo={photo} layer={layer} width={width} height={height} />
+        <RegionOverlay key={layer.key} photo={photo} layer={layer} width={width} height={height} fit={fit} />
       ))}
     </View>
   );
 }
 
-function RegionOverlay({ photo, layer, width, height }: { photo: SkImage; layer: PaintLayer; width: number; height: number }) {
+function RegionOverlay({
+  photo,
+  layer,
+  width,
+  height,
+  fit,
+}: {
+  photo: SkImage;
+  layer: PaintLayer;
+  width: number;
+  height: number;
+  fit: 'cover' | 'contain';
+}) {
   const mask = useAuthedSkImage(layer.maskUrl);
   const bounds = useMemo(() => rect(0, 0, width, height), [width, height]);
   const uniforms = useMemo(
@@ -58,9 +77,12 @@ function RegionOverlay({ photo, layer, width, height }: { photo: SkImage; layer:
   return (
     <Canvas style={StyleSheet.absoluteFill}>
       <Fill>
+        {/* Both shaders take the SAME fit as the photo underneath: a mask laid
+            out differently from the picture it belongs to paints the wrong
+            pixels, which is subtler and worse than a visible misalignment. */}
         <Shader source={overlayEffect} uniforms={uniforms}>
-          <ImageShader image={photo} fit="cover" rect={bounds} tx="clamp" ty="clamp" />
-          <ImageShader image={mask} fit="cover" rect={bounds} tx="clamp" ty="clamp" />
+          <ImageShader image={photo} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
+          <ImageShader image={mask} fit={fit} rect={bounds} tx="clamp" ty="clamp" />
         </Shader>
       </Fill>
     </Canvas>
