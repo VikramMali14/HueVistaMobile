@@ -40,9 +40,15 @@ describe('userRoleSchema', () => {
 });
 
 describe('userProfileSchema', () => {
-  it('defaults the verification flags to false', () => {
+  it('defaults emailVerified to false', () => {
     const p = userProfileSchema.parse({ id: 'u', role: 'PAINTER' });
     expect(p.emailVerified).toBe(false);
-    expect(p.phoneVerified).toBe(false);
+  });
+
+  // The backend still sends phoneVerified; the app no longer verifies numbers,
+  // so the flag is dropped rather than carried around unused.
+  it('drops the backend phoneVerified flag', () => {
+    const p = userProfileSchema.parse({ id: 'u', role: 'PAINTER', phoneVerified: true });
+    expect('phoneVerified' in p).toBe(false);
   });
 });
