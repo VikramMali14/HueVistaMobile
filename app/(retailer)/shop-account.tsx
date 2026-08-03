@@ -1,7 +1,7 @@
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Card, Button } from '../../src/components';
-import { spacing } from '../../src/theme';
+import { Screen, Serif, Text, Card, Button } from '../../src/components';
+import { spacing, fontSize } from '../../src/theme';
 import { AccountPanel } from '../../src/account/AccountPanel';
 import { useMyAccess, useMyOrg } from '../../src/account/roleQueries';
 
@@ -21,7 +21,9 @@ export default function ShopAccount() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="title">Account</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Account</Serif>
+      </Text>
 
         <AccountPanel>
           <Card>

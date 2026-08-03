@@ -1,6 +1,6 @@
 import { View, StyleSheet, ScrollView, Linking, RefreshControl } from 'react-native';
-import { Screen, Text, Button, Card, StatusPill, Meter, StatTile } from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Screen, Serif, Text, Button, Card, StatusPill, Meter, StatTile } from '../../src/components';
+import { colors, spacing, fontSize } from '../../src/theme';
 import {
   useBuyProjectWithPoints,
   useRewardPoints,
@@ -52,7 +52,9 @@ export default function PlanScreen() {
           />
         }
       >
-        <Text variant="title">Plan</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Plan</Serif>
+      </Text>
 
         <Card>
           <View style={styles.head}>

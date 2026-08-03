@@ -21,6 +21,34 @@ export const colors = {
   // translucent overlays
   scrim: 'rgba(5,4,9,0.72)',
   accentGhost: 'rgba(124,92,255,0.14)',
+
+  /* ---- Aurora layer ------------------------------------------------------
+   * Depth on top of the flat tokens above. The tokens up to here still mirror
+   * globals.css one-for-one; everything below is mobile-only surface treatment
+   * and has no web counterpart to drift from.
+   */
+  // Glass: cards read as lit panes over the aurora rather than solid blocks.
+  glass: 'rgba(255,255,255,0.045)',
+  glassStrong: 'rgba(255,255,255,0.075)',
+  glassEdge: 'rgba(255,255,255,0.10)', // top-lit hairline
+  glassEdgeSoft: 'rgba(255,255,255,0.05)',
+  // The violet cast the aurora wash blooms toward at the top of a screen.
+  auroraDeep: '#0d0a1c',
+  auroraMid: '#160f33',
+  auroraLift: '#1d1240',
+  // Ink for the floating tab bar and other "solid object" chrome.
+  ink: '#100e18',
+  inkEdge: 'rgba(255,255,255,0.08)',
 } as const;
 
 export type ColorToken = keyof typeof colors;
+
+/** Hex (#rgb/#rrggbb) → `rgba(...)` at `alpha`. Falls back to the input. */
+export function alpha(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  if (full.length !== 6) return hex;
+  const n = parseInt(full, 16);
+  if (Number.isNaN(n)) return hex;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}

@@ -1,8 +1,8 @@
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ShadeLibrary } from '../../src/shades/ShadeLibrary';
-import { Text, Card, Button } from '../../src/components';
-import { colors, spacing } from '../../src/theme';
+import { Text, Card, Button, BackLink } from '../../src/components';
+import { spacing } from '../../src/theme';
 
 /**
  * Guest browse — the full catalogue with no account, using the public
@@ -18,11 +18,7 @@ export default function BrowseShades() {
       onTryOnWall={() => router.push('/register')}
       extraHeader={
         <View style={styles.banner}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Text variant="label" color={colors.fgSoft}>
-              ‹ Back
-            </Text>
-          </Pressable>
+          <BackLink />
           <Card>
             <Text variant="heading">Browsing as a guest</Text>
             <Text variant="bodySoft" style={styles.bannerBody}>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { Text, Card, Button, StatusPill, Input, SheetModal } from '../components';
@@ -7,6 +7,8 @@ import { colors, spacing } from '../theme';
 import { useSession } from '../auth';
 import { API_ORIGIN, authApi, userMessage } from '../api';
 import { useMyProfile } from './queries';
+import { haptics } from '../haptics';
+import { useHapticsPreference } from '../haptics/preference';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -64,6 +66,7 @@ export function AccountActions() {
   const router = useRouter();
   const profile = useMyProfile();
   const [busy, setBusy] = useState(false);
+  const [hapticsOn, setHapticsOn] = useHapticsPreference();
 
   const [pwOpen, setPwOpen] = useState(false);
   const [current, setCurrent] = useState('');
@@ -85,10 +88,12 @@ export function AccountActions() {
     setPwError(null);
     try {
       await authApi.changePassword(current, next);
+      haptics.success();
       setPwDone(true);
       setCurrent('');
       setNext('');
     } catch (err) {
+      haptics.error();
       setPwError(userMessage(err));
     } finally {
       setPwBusy(false);
@@ -148,6 +153,27 @@ export function AccountActions() {
           />
         </Card>
       ) : null}
+
+      <Card>
+        <View style={styles.head}>
+          <Text variant="label">Haptics</Text>
+          <Switch
+            value={hapticsOn}
+            onValueChange={(next) => {
+              setHapticsOn(next);
+              // Fire once on the way ON so the switch demonstrates what it
+              // just enabled. Turning it off is silent, which is the point.
+              if (next) haptics.press();
+            }}
+            trackColor={{ false: colors.surface2, true: colors.accentDeep }}
+            thumbColor={hapticsOn ? colors.accentSoft : colors.fgMute}
+            accessibilityLabel="Vibration feedback"
+          />
+        </View>
+        <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
+          Small vibrations when you tap a shade, switch tabs or finish an action.
+        </Text>
+      </Card>
 
       <Card>
         <Text variant="label">Support</Text>

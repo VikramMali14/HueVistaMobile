@@ -103,10 +103,12 @@ Open app ─► Welcome screen
 4. **Customer home** — big "Visualize a room" CTA, recent projects, AI picks
 5. **Camera capture** — full-screen camera, wall-detection overlay, gallery pick
 6. **Visualizer editor (hero screen)** — before/after compare slider, region
-   chips (Main wall / Left wall / Ceiling / + tap to add), horizontal shade
-   tray, "AI suggest" + "Share" actions, auto-save indicator
-7. **Shade library** — search, brand chips, mood/family chips, swatch grid,
-   shade detail card with "Try on wall"
+   chips (Main wall / Left wall / Ceiling / + tap to add), quick shade row
+   (recently used first) with "All colours" into the full picker, "AI suggest"
+   + "Share" actions, auto-save indicator
+7. **Shade library** — company first, then that company's colours: search,
+   Light/Medium/Dark depth filter, family chips, swatch grid, shade detail
+   sheet with "Try on wall" and hold-to-wall
 8. **Share sheet** — WhatsApp, copy link, "Send to shop for a quote", save image
 9. **Retailer counter dashboard** — quota meter (e.g. 43/60), stat tiles
    (walk-ins / active codes / pending orders / week's order value), "New
@@ -147,11 +149,47 @@ export const colors = {
 
 **Type:** Space Grotesk (headings / display, weights 500–700, via
 `expo-font` + Google Fonts package), system default for body, JetBrains Mono
-(or platform mono) for shade codes, access codes, prices.
+(or platform mono) for shade codes, access codes, prices. Instrument Serif
+italic is the accent face, used for one or two emphasised words inside a sans
+headline (`<Serif>` in `src/components/Text.tsx`) — never for a whole line.
 
-**Shape language:** cards radius 13, buttons radius 11, pills fully rounded,
-status pills are UPPERCASE mono 8–10pt. Status colors: NEW=accent,
+**Shape language:** content cards radius 20 (14 for dense rows and thumbnails),
+buttons 16, inputs 14, sheets 30, pills fully rounded. Status pills are
+UPPERCASE mono 8–10pt. Status colors: NEW=accent,
 IN PROGRESS/EXPIRING=warning, DONE/ACTIVE=success, EXPIRED/OVERDUE=danger.
+
+### 4.1 The aurora layer (mobile only)
+
+The tokens above mirror `globals.css` and must not drift from it. Everything
+below is mobile surface treatment with no web counterpart, and lives in
+`src/theme/{layout,motion}.ts` plus the "Aurora layer" block in `colors.ts`.
+
+- **Aurora background.** Every screen sits on `<Aurora>` (via `Screen`): a
+  vertical wash blooming violet at the top over three drifting colour clouds,
+  rendered in Skia. `tint` biases it toward a colour — the Studio passes the
+  shade currently on the wall.
+- **Depth over borders.** Cards are translucent (`colors.glass`) with a
+  top-lit edge and a real shadow (`elevation.low|mid|high`), not opaque blocks
+  separated by hairlines. `glow(color)` lights an element in its own colour;
+  shade swatches use it so a wall of them reads as paint under light.
+- **The orb.** `<AuraOrb>` is the one hero figure — a glowing disc with a
+  progress ring, for the single number a screen is about (projects left, AI
+  quota).
+- **Floating tab bar.** `<FloatingTabBar>` is a dark capsule inset from all
+  three edges, drawn over the scene. It reports its height through
+  `BottomTabBarHeightContext`, and `Screen` reserves that space automatically —
+  screens never hardcode a tab-bar inset.
+- **Motion.** RN `Animated` with `useNativeDriver` only (transform/opacity), so
+  it survives a busy JS thread; durations and curves come from
+  `src/theme/motion.ts`. `<Reveal>` staggers sections in on mount;
+  `<PressableScale>` dips a control under the finger. Use `useAnimatedValue()`,
+  not `useRef(new Animated.Value())` — the latter trips `react-hooks/refs`.
+
+**Haptics.** Every control gives touch feedback through `src/haptics` — call
+the semantic intent (`haptics.select/tap/press/success/warning/error`), never
+`expo-haptics` directly. The module no-ops on web, swallows failures on devices
+with no haptic engine, and honours the user's opt-out toggle in Account
+(persisted; restored in the root layout by `loadHapticsPreference()`).
 
 ---
 
@@ -263,6 +301,7 @@ recolors at 60fps is the gate for the rest of Phase 1.
 - [x] Visualizer editor: region chips, shade tray, auto-save regions (`PUT .../regions`) — `app/project/[id].tsx`: region chips, live shade tray, **multi-region composite recolor of the real masks** (Skia overlay shader + auth-fetched mask PNGs), per-swatch autosave. ⚠️ **Real-mask recolor + segmentation need a running backend + device to validate** (not exercisable in CI). Before/after compare currently lives in the engine spike.
 - [x] Shade library: search + brand/family filters against `/api/shades`, offline cache — **live, and now shop-scoped**: a signed-in account only sees the paint companies it may work with (a customer's from their code, a shop's from `/api/shades/mine/brands`), and every code is rendered through the shop's own shade-code pattern with names hidden when the shop hides them. Signed-out browsing is unchanged. (`app/(customer)/shades.tsx`): server-side search + brand + family filters, infinite scroll via `/api/shades/paged`, shade detail sheet via `/{brand}/{code}` (AI-enriched), and React Query offline persistence of the catalogue (`src/query/persist.ts`). Contract verified against `ShadeController`.
 - [x] "Try on wall" from any shade → visualizer with shade preselected — via route param (sample shades); carries over to the live catalogue
+- [x] **Company → colour, everywhere paint is chosen.** The catalogue opens on the paint companies this account may work with and the grid that follows belongs to one of them; a shop restricted to a single company skips the step. Within a company: search, a Light/Medium/Dark depth filter (the backend's `tonality`), and family chips. The Studio and the room editor no longer paint from a dozen hardcoded demo swatches — both open the same `ShadePickerSheet` over the real scoped catalogue, with recently-used colours (persisted locally) on top for flipping between candidates. Shade facts match the website exactly — undertone, depth, LRV, family, finishes — via `src/shades/colorScience.ts`, a port of the site's `lib/color-science.ts` that keeps its thresholds and its words; the AI prose the website never renders no longer surfaces here either. `HoldToWall` fills the screen with one colour to hold against a real wall.
 - [x] AI suggest: `POST .../recommendations` surfaced in editor — "AI suggest" opens a sheet of Claude's three palettes, each sized to the room (a photo with one wall marked comes back with one colour, not three), matched to real shades; tapping a colour paints the selected wall. Included in the project rather than quota-billed; the only 402 left is a project whose access window has closed. Contract verified against `ColorRecommendationController`.
 - [x] Projects list + detail (resume editing) — live list (`app/(customer)/projects.tsx`, `GET /api/projects` with authed thumbnails) + the editor as detail (persisted region colours reload). Contract verified against `ProjectController`.
 - [x] Share: native share sheet + share link (`POST .../share`) + save-to-gallery — editor "Share" generates a **10-day** link (the backend's new ceiling: a share link hands over the same repaint capability a walk-in code does, so the two expire on the same clock); "Save" captures the painted canvas (react-native-view-shot) and writes it to Photos (expo-media-library).

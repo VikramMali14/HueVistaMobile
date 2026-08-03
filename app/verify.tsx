@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, StyleSheet } from 'react-native';
+
 import { useQueryClient } from '@tanstack/react-query';
-import { Screen, Text, Card, Button, Input, StatusPill } from '../src/components';
+import { Screen, Text, Card, Button, Input, StatusPill, BackLink } from '../src/components';
 import { colors, spacing } from '../src/theme';
 import { verificationApi, userMessage, VerificationStatus } from '../src/api';
 import { useMyProfile } from '../src/account/queries';
+import { haptics } from '../src/haptics';
 
 /**
  * Confirm the account's e-mail address.
@@ -22,7 +23,6 @@ import { useMyProfile } from '../src/account/queries';
  * the channel picker from git history once SMS is actually sending.
  */
 export default function VerifyScreen() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const profile = useMyProfile();
   const p = profile.data;
@@ -41,6 +41,7 @@ export default function VerifyScreen() {
     try {
       setSent(await verificationApi.sendEmail());
     } catch (err) {
+      haptics.error();
       setError(userMessage(err));
     } finally {
       setBusy(false);
@@ -52,11 +53,13 @@ export default function VerifyScreen() {
     setError(null);
     try {
       await verificationApi.confirmEmail(code);
+      haptics.success();
       setDone(true);
       setCode('');
       // The profile's verified flags — and anything gated on them — are stale now.
       await queryClient.invalidateQueries({ queryKey: ['account'] });
     } catch (err) {
+      haptics.error();
       setError(userMessage(err));
     } finally {
       setBusy(false);
@@ -65,11 +68,7 @@ export default function VerifyScreen() {
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text variant="label" color={colors.fgSoft}>
-          ‹ Back
-        </Text>
-      </Pressable>
+      <BackLink />
 
       <View style={styles.header}>
         <Text variant="title">Verify your email</Text>

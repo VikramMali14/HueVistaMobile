@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, fonts } from '../../src/theme';
+import { FloatingTabBar } from '../../src/components';
+import { colors } from '../../src/theme';
 
 /**
  * The painter's app: the work, the tool, the account.
@@ -12,16 +13,11 @@ import { colors, fonts } from '../../src/theme';
 export default function PainterTabsLayout() {
   return (
     <Tabs
+      // The bar floats over the scene, so the scene keeps the full height and
+      // screens reserve their own room for it via `<Screen tabBar>`.
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accentSoft,
-        tabBarInactiveTintColor: colors.fgMute,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.rule,
-          borderTopWidth: 1,
-        },
-        tabBarLabelStyle: { fontFamily: fonts.heading, fontSize: 11 },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >

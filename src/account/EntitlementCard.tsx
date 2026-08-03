@@ -2,6 +2,7 @@ import { View, StyleSheet } from 'react-native';
 import { Text, Card, Button, StatusPill, Meter } from '../components';
 import { colors, spacing } from '../theme';
 import { useMyEntitlement, useRequestMoreProjects } from './queries';
+import { haptics } from '../haptics';
 
 /** "in 4 days" / "today" / "expired" for an access window. */
 export function expiryText(iso?: string | null): string | null {
@@ -80,7 +81,12 @@ export function EntitlementCard() {
                 variant="secondary"
                 fullWidth
                 loading={ask.isPending}
-                onPress={() => ask.mutate()}
+                onPress={() =>
+                  ask.mutate(undefined, {
+                    onSuccess: () => haptics.success(),
+                    onError: () => haptics.error(),
+                  })
+                }
               />
               {ask.isError ? (
                 <Text variant="caption" color={colors.danger}>

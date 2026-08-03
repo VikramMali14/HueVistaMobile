@@ -1,6 +1,6 @@
 import { StyleSheet, ScrollView } from 'react-native';
-import { Screen, Text, Card } from '../../src/components';
-import { spacing } from '../../src/theme';
+import { Screen, Serif, Text, Card } from '../../src/components';
+import { spacing, fontSize } from '../../src/theme';
 import { AccountPanel } from '../../src/account/AccountPanel';
 import { useMyOrg } from '../../src/account/roleQueries';
 
@@ -11,7 +11,9 @@ export default function DistributorAccount() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="title">Account</Text>
+        <Text variant="display">
+        <Serif size={fontSize.display}>Account</Serif>
+      </Text>
         <AccountPanel>
           <Card>
             <Text variant="label">Distributorship</Text>
