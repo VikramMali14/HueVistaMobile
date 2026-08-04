@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import { adminUserSchema, AdminUser } from './adminSchemas';
 import {
   myAccessSchema,
   networkReportSchema,
@@ -47,6 +48,27 @@ export const orgApi = {
   /** The downline this account can see, as a tree with per-node counts. */
   network(): Promise<NetworkReport> {
     return apiFetch('/hierarchy/network').then((d) => networkReportSchema.parse(d));
+  },
+
+  /**
+   * Create a painter account under this shop, with a password the shop sets.
+   *
+   * The other way in is an invitation the painter redeems themselves, and that
+   * one stays the better default — the account is theirs, with their own login.
+   * This exists for the case invitations do not cover: a painter standing at the
+   * counter who does not have an email they can check right now, or a crew being
+   * set up in one go. RETAILER only, and gated on the NETWORK feature.
+   */
+  createPainter(body: {
+    name: string;
+    email: string;
+    password: string;
+    phone?: string;
+  }): Promise<AdminUser> {
+    return apiFetch('/hierarchy/painters', {
+      method: 'POST',
+      json: { ...body, name: body.name.trim(), email: body.email.trim() },
+    }).then((d) => adminUserSchema.parse(d));
   },
 
   /** Every paint company, flagged with whether this shop has been granted it. */

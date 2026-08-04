@@ -33,6 +33,54 @@ if (!fs.existsSync(buildGradle)) {
   process.exit(1);
 }
 
+/**
+ * Give the dex merger room to work.
+ *
+ * The template ships `org.gradle.jvmargs=-Xmx2048m`, which this app outgrew:
+ * `:app:mergeExtDexRelease` died with `OutOfMemoryError: Java heap space` while
+ * merging the external dex archives, and took `:app:processReleaseResources`
+ * down with it — AAPT2 reported "Link timed out", which reads like a separate
+ * bug but is just what a starved runner looks like from inside a daemon waiting
+ * on memory it is never going to get.
+ *
+ * Skia, Reanimated and the Expo modules are all large native/Java dependencies
+ * and the merge is the one step that has to hold them at once, so this scales
+ * with the dependency list rather than with app code — it will not shrink back.
+ * 6 GB is comfortable on GitHub's 16 GB runners and still leaves headroom for
+ * the Gradle daemon and the AAPT2 workers beside it.
+ *
+ * Runs before the build.gradle work below, and before its early exit: the two
+ * patches are independent, and a re-run that finds signing already applied must
+ * not skip this one.
+ */
+function ensureGradleHeap() {
+  const propsPath = path.join(__dirname, '..', 'android', 'gradle.properties');
+  if (!fs.existsSync(propsPath)) {
+    console.error(`No ${propsPath} — run \`npx expo prebuild --platform android\` first.`);
+    process.exit(1);
+  }
+  const jvmArgs = '-Xmx6144m -XX:MaxMetaspaceSize=1024m';
+  const line = `org.gradle.jvmargs=${jvmArgs}`;
+  const props = fs.readFileSync(propsPath, 'utf8');
+
+  if (props.includes(line)) {
+    console.log('android/gradle.properties already carries the release heap setting.');
+    return;
+  }
+
+  // Replace the template's own setting when present (commented or not) so the
+  // file never ends up with two values for the same key — Gradle takes the
+  // last, which would make this depend on append order.
+  const next = /^\s*#?\s*org\.gradle\.jvmargs=.*$/m.test(props)
+    ? props.replace(/^\s*#?\s*org\.gradle\.jvmargs=.*$/m, line)
+    : `${props.replace(/\s*$/, '')}\n${line}\n`;
+
+  fs.writeFileSync(propsPath, next);
+  console.log(`android/gradle.properties: org.gradle.jvmargs set to ${jvmArgs}.`);
+}
+
+ensureGradleHeap();
+
 let gradle = fs.readFileSync(buildGradle, 'utf8');
 
 if (gradle.includes('signingConfigs.release')) {
