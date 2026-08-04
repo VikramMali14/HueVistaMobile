@@ -4,8 +4,8 @@ import { View, StyleSheet, ScrollView, Share } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Screen, Text, Card, Button, StatusPill, Input, SheetModal, BackLink } from '../src/components';
 import { colors, spacing } from '../src/theme';
-import { painterApi, decimal, userMessage, PainterInvitation } from '../src/api';
-import { useMyOrg } from '../src/account/roleQueries';
+import { painterApi, decimal, userMessage, AdminUser, PainterInvitation } from '../src/api';
+import { useCreatePainter, useMyOrg } from '../src/account/roleQueries';
 import { expiryText } from '../src/account/EntitlementCard';
 
 /**
@@ -24,6 +24,40 @@ export default function PaintersScreen() {
   const [phone, setPhone] = useState('');
   const [minted, setMinted] = useState<PainterInvitation | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const createPainter = useCreatePainter(orgId);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [created, setCreated] = useState<AdminUser | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  function closeCreate() {
+    setCreateOpen(false);
+    setCreated(null);
+    setCreateError(null);
+    setNewName('');
+    setNewEmail('');
+    setNewPhone('');
+    setNewPassword('');
+  }
+
+  async function submitCreate() {
+    setCreateError(null);
+    try {
+      const user = await createPainter.mutateAsync({
+        name: newName,
+        email: newEmail,
+        password: newPassword,
+        phone: newPhone.trim() || undefined,
+      });
+      setCreated(user);
+    } catch (err) {
+      setCreateError(userMessage(err));
+    }
+  }
 
   const painters = useQuery({
     queryKey: ['painter', 'for-retailer', orgId],
@@ -73,6 +107,12 @@ export default function PaintersScreen() {
         </View>
 
         <Button label="Invite a painter" fullWidth onPress={() => setInviteOpen(true)} />
+        <Button
+          label="Create an account for them"
+          variant="secondary"
+          fullWidth
+          onPress={() => setCreateOpen(true)}
+        />
 
         {painters.isLoading ? (
           <Text variant="caption">Loading…</Text>
@@ -179,6 +219,82 @@ export default function PaintersScreen() {
           </View>
         )}
       </SheetModal>
+
+      {/*
+        The other way in, which the website has had all along and the app did not.
+        An invitation is still the better default — the painter sets their own
+        password and the account is unambiguously theirs — so this sheet says so
+        rather than presenting the two as equivalent. It exists for the painter
+        standing at the counter who cannot check an email right now.
+      */}
+      <SheetModal
+        visible={createOpen}
+        onClose={closeCreate}
+        title="Create a painter account"
+      >
+        <ScrollView
+          style={styles.createScroll}
+          contentContainerStyle={styles.createSheet}
+          keyboardShouldPersistTaps="handled"
+        >
+          {created ? (
+            <>
+              <Text variant="bodySoft">
+                {created.name ?? 'The painter'} can sign in now with {created.email} and the
+                password you set. Ask them to change it once they are in.
+              </Text>
+              <Button label="Done" fullWidth onPress={closeCreate} />
+            </>
+          ) : (
+            <>
+              <Text variant="bodySoft">
+                You set their first password, so use this when they cannot pick up an invitation —
+                otherwise inviting them is cleaner, because they choose their own.
+              </Text>
+              <Input
+                label="Name"
+                value={newName}
+                onChangeText={setNewName}
+                autoCapitalize="words"
+                placeholder="As you'd write it on a job sheet"
+              />
+              <Input
+                label="Email"
+                value={newEmail}
+                onChangeText={setNewEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+              <Input
+                label="Mobile number (optional)"
+                value={newPhone}
+                onChangeText={setNewPhone}
+                keyboardType="phone-pad"
+              />
+              <Input
+                label="First password"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                autoCapitalize="none"
+                secureTextEntry
+                hint="At least 8 characters. They can change it after signing in."
+              />
+              {createError ? (
+                <Text variant="body" color={colors.danger}>
+                  {createError}
+                </Text>
+              ) : null}
+              <Button
+                label="Create the account"
+                fullWidth
+                loading={createPainter.isPending}
+                disabled={!newName.trim() || !newEmail.trim() || newPassword.length < 8}
+                onPress={submitCreate}
+              />
+            </>
+          )}
+        </ScrollView>
+      </SheetModal>
     </Screen>
   );
 }
@@ -191,4 +307,6 @@ const styles = StyleSheet.create({
   name: { flexShrink: 1 },
   sheet: { gap: spacing.sm, alignItems: 'center' },
   bigCode: { fontSize: 26, letterSpacing: 2, marginVertical: spacing.sm },
+  createScroll: { maxHeight: 460 },
+  createSheet: { gap: spacing.md, paddingBottom: spacing.lg },
 });

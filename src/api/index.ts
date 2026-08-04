@@ -68,6 +68,17 @@ export {
 } from './adminSchemas';
 export type { AdminStats, AdminRevenue, AdminAiUsage, AdminUser } from './adminSchemas';
 export { retailApi } from './retail';
+export type { ComboShadeInput, CreateComboInput } from './retail';
+export { catalogueApi, productsApi } from './products';
+export type { ShopProductInput } from './products';
+export {
+  paintBrandSchema,
+  paintLineSchema,
+  defaultBrightness,
+  PRODUCT_CATEGORIES,
+  QUALITY_TIERS,
+} from './catalogueSchemas';
+export type { PaintBrand, PaintLine, ProductCategory, QualityTier } from './catalogueSchemas';
 export {
   shopAccessCodeSchema,
   projectGrantSchema,

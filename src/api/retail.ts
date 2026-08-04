@@ -14,6 +14,21 @@ import {
   WalletSummary,
 } from './retailSchemas';
 
+/** One colour in a palette being saved. Hex must be a full `#rrggbb`. */
+export interface ComboShadeInput {
+  code: string;
+  name: string;
+  hex: string;
+}
+
+/** A palette to save: a name, which side of the wall it is for, and three shades. */
+export interface CreateComboInput {
+  name: string;
+  scope: 'INTERIOR' | 'EXTERIOR';
+  /** Main wall, accent wall, trim — in that order. */
+  shades: [ComboShadeInput, ComboShadeInput, ComboShadeInput];
+}
+
 /**
  * The counter: the codes a shop issues, the customers holding them, and the
  * projects it grants them.
@@ -131,10 +146,68 @@ export const retailApi = {
     return apiFetch('/me/retailer-combos').then((d) => z.array(retailerComboSchema).parse(d));
   },
 
+  /**
+   * The palettes this shop has saved, from the shop's own side.
+   *
+   * Distinct from `myCombos`, which answers "what should the studio offer the
+   * person holding this phone" and is what a customer calls. This one is scoped
+   * to an org and is the list a shop edits.
+   */
+  listCombos(orgId: string): Promise<RetailerCombo[]> {
+    return apiFetch(`/organizations/${encodeURIComponent(orgId)}/combos`).then((d) =>
+      z.array(retailerComboSchema).parse(d),
+    );
+  },
+
+  /**
+   * Save a palette. Exactly three shades, in the studio's own role order —
+   * main wall, accent wall, trim — which is why the input is a fixed triple
+   * rather than a list the caller could get wrong.
+   */
+  createCombo(orgId: string, input: CreateComboInput): Promise<RetailerCombo> {
+    return apiFetch(`/organizations/${encodeURIComponent(orgId)}/combos`, {
+      method: 'POST',
+      json: { name: input.name.trim(), scope: input.scope, shades: input.shades },
+    }).then((d) => retailerComboSchema.parse(d));
+  },
+
+  /** Remove a palette. It stops being offered in the studio immediately. */
+  deleteCombo(orgId: string, comboId: string): Promise<void> {
+    return apiFetch(
+      `/organizations/${encodeURIComponent(orgId)}/combos/${encodeURIComponent(comboId)}`,
+      { method: 'DELETE' },
+    ).then(() => undefined);
+  },
+
   /** The shop's public kiosk links. */
   storeLinks(orgId: string): Promise<StoreLink[]> {
     return apiFetch(`/organizations/${encodeURIComponent(orgId)}/store-links`).then((d) =>
       z.array(storeLinkSchema).parse(d),
+    );
+  },
+
+  /**
+   * Publish a kiosk link for the shop.
+   *
+   * The price is not a parameter and must not become one: the kiosk price is a
+   * single platform-wide setting and the payment is HueVista's, with the shop
+   * rewarded in points per sale. All the shop chooses is how long a purchased
+   * code lasts (3–14 days).
+   */
+  createStoreLink(orgId: string, validDays = 3): Promise<StoreLink> {
+    return apiFetch(`/organizations/${encodeURIComponent(orgId)}/store-links`, {
+      method: 'POST',
+      json: { validDays },
+    }).then((d) => storeLinkSchema.parse(d));
+  },
+
+  /** Pause/resume a kiosk link, or change how long its codes last. */
+  updateStoreLink(
+    linkId: string,
+    body: { validDays?: number; active?: boolean },
+  ): Promise<StoreLink> {
+    return apiFetch(`/store-links/${encodeURIComponent(linkId)}`, { method: 'PATCH', json: body }).then(
+      (d) => storeLinkSchema.parse(d),
     );
   },
 

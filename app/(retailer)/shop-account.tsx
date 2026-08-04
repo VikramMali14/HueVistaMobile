@@ -18,6 +18,11 @@ export default function ShopAccount() {
   const org = useMyOrg();
   const access = useMyAccess().data;
 
+  // Same rule the tab bar uses: a grant that failed to load reads as
+  // unrestricted, so a backend hiccup never hides a shop's own tools.
+  const restricted = access?.featuresRestricted ?? false;
+  const can = (path: string) => !restricted || (access?.allowedPaths ?? []).includes(path);
+
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
@@ -51,17 +56,79 @@ export default function ShopAccount() {
             </View>
           </Card>
 
+          {/* Both the invitation and the account-creation endpoints behind this
+              screen are NETWORK-gated, so a shop without that grant would only
+              reach a screen whose every button 403s. */}
+          {can('/network') ? (
+            <Card>
+              <Text variant="label">Painters</Text>
+              <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
+                Invite a painter and they get their own login, with the jobs you assign them — or
+                create the account yourself when they cannot pick up an invitation.
+              </Text>
+              <Button
+                label="Manage painters"
+                variant="secondary"
+                fullWidth
+                style={styles.action}
+                onPress={() => router.push('/painters')}
+              />
+            </Card>
+          ) : null}
+
+          {/* The shelf: what this shop sells, as every customer holding one of its
+              codes sees it. Hidden when the distributor has switched the page off,
+              matching the website's own nav filter. */}
+          {can('/products') ? (
+            <Card>
+              <Text variant="label">Products</Text>
+              <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
+                The paint you stock — price, pack, coverage and finish. This is what your customers
+                see against the codes you issue.
+              </Text>
+              <Button
+                label="Manage products"
+                variant="secondary"
+                fullWidth
+                style={styles.action}
+                onPress={() => router.push('/products')}
+              />
+            </Card>
+          ) : null}
+
+          {/* Palettes the shop curates itself. They lead in the studio's suggest
+              tab, ahead of the model's — chosen by the people selling the paint. */}
+          {can('/portal') ? (
+            <Card>
+              <Text variant="label">Palettes</Text>
+              <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
+                Three-colour combinations you put together. They show up first in the studio, above
+                the AI suggestions, for anyone painting with your shop.
+              </Text>
+              <Button
+                label="Manage palettes"
+                variant="secondary"
+                fullWidth
+                style={styles.action}
+                onPress={() => router.push('/palettes')}
+              />
+            </Card>
+          ) : null}
+
+          {/* The public kiosk link: a walk-in pays HueVista directly and the shop
+              earns points per sale. */}
           <Card>
-            <Text variant="label">Painters</Text>
+            <Text variant="label">Kiosk link</Text>
             <Text variant="bodySoft" style={{ marginTop: spacing.xs }}>
-              Invite a painter and they get their own login, with the jobs you assign them.
+              A public link anyone can buy a code from — no counter time, and you earn points on
+              every sale.
             </Text>
             <Button
-              label="Manage painters"
+              label="Manage kiosk"
               variant="secondary"
               fullWidth
               style={styles.action}
-              onPress={() => router.push('/painters')}
+              onPress={() => router.push('/kiosk')}
             />
           </Card>
         </AccountPanel>
