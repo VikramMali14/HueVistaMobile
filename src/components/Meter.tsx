@@ -47,9 +47,9 @@ export function Meter({ value, max, label, showCount = true, style }: MeterProps
     <View style={style}>
       {(label || showCount) && (
         <View style={styles.header}>
-          {label ? <Text variant="overline">{label}</Text> : <View />}
+          {label ? <Text variant="eyebrow">{label}</Text> : <View />}
           {showCount ? (
-            <Text variant="mono" color={colors.fgSoft}>
+            <Text variant="code" color={colors.fgSoft}>
               {value} / {max}
             </Text>
           ) : null}

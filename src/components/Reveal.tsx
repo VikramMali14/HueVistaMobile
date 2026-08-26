@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Animated, StyleProp, ViewStyle } from 'react-native';
-import { duration, easing, revealOffset, stagger, useAnimatedValue } from '../theme';
+import { duration, easing, revealOffset, stagger, useAnimatedValue, useReducedMotion } from '../theme';
 
 /**
  * Fades and lifts its child into place on mount.
@@ -27,12 +27,15 @@ export interface RevealProps {
 
 export function Reveal({ children, index = 0, delay = 0, offset = revealOffset, style }: RevealProps) {
   const progress = useAnimatedValue(0);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     const anim = Animated.timing(progress, {
       toValue: 1,
-      duration: duration.reveal,
-      delay: stagger(index) + delay,
+      // Reduced motion still fades — content appearing from nothing is jarring
+      // in its own way — but nothing travels and nothing waits its turn.
+      duration: reduced ? duration.fast : duration.reveal,
+      delay: reduced ? 0 : stagger(index) + delay,
       easing: easing.entrance,
       useNativeDriver: true,
     });
@@ -49,7 +52,12 @@ export function Reveal({ children, index = 0, delay = 0, offset = revealOffset, 
         {
           opacity: progress,
           transform: [
-            { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [offset, 0] }) },
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [reduced ? 0 : offset, 0],
+              }),
+            },
           ],
         },
       ]}

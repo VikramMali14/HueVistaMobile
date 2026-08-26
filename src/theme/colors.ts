@@ -1,7 +1,15 @@
 /**
- * Midnight Spectrum palette — HueVista's single, dark-by-design theme.
- * Source of truth: HueVistaFrontEnd/src/app/globals.css (see PLAN.md §4).
- * The app ships one theme; there is no light mode at launch.
+ * Midnight Spectrum — HueVista's dark-by-design palette.
+ *
+ * Source of truth: `HueVistaFrontEnd/src/app/globals.css`. The tokens down to
+ * `accentGhost` mirror that file one-for-one so a colour never means one thing
+ * on the site and another on the phone; everything below it is mobile-only
+ * surface treatment with no web counterpart to drift from.
+ *
+ * The app ships one theme. The web has a light mode, and the phone deliberately
+ * does not: the whole product is a room photograph with paint on it, and a pale
+ * chrome throws its own cast over the one thing the user is judging. Dark keeps
+ * the wall the brightest object on the screen.
  */
 export const colors = {
   bg: '#0a090f', // app background
@@ -9,23 +17,28 @@ export const colors = {
   surface: '#14131c', // cards
   surface2: '#1b1a26', // sheets, elevated surfaces
   fg: '#eae8e3', // primary text
-  fgSoft: '#a7a4bb', // secondary text
-  fgMute: '#6d6a84', // tertiary / disabled text
-  accent: '#7c5cff', // electric purple — primary actions
-  accentSoft: '#a080ff',
-  accentDeep: '#5a3fcc',
+  fgSoft: '#c9c7da', // secondary text
+  fgMute: '#8f8da6', // tertiary text — 4.6:1 on the page, still legible
+  fgFaint: '#6d6a84', // decorative only: rules, disabled glyphs. Never a word.
+  accent: '#7c5cff', // electric purple — fills and rectangles
+  accentSoft: '#a080ff', // the accent AS TEXT (4.56:1 is too tight for #7c5cff)
+  accentDeep: '#5a3fcc', // filled buttons carrying white labels — 6.96:1
+  warm: '#cf7b60', // the warm secondary, as words
+  warmFill: '#8a3a2e', // …and as a rectangle under ivory text
   rule: 'rgba(234,232,227,0.09)', // hairline borders
-  success: '#7fae84', // sage — DONE / ACTIVE
-  danger: '#d0654c', // terracotta — EXPIRED / OVERDUE
-  warning: '#d9b45c', // IN PROGRESS / EXPIRING
+  ruleStrong: 'rgba(234,232,227,0.16)',
+  success: '#6fae76', // sage as text
+  successFill: '#4e7a52',
+  danger: '#c2402a', // errors / destructive
+  dangerSoft: '#e07d68', // the same failure, as words on a dark surface
+  warning: '#d9b45c', // in progress / expiring
   // translucent overlays
   scrim: 'rgba(5,4,9,0.72)',
+  scrimSoft: 'rgba(5,4,9,0.55)',
   accentGhost: 'rgba(124,92,255,0.14)',
 
   /* ---- Aurora layer ------------------------------------------------------
-   * Depth on top of the flat tokens above. The tokens up to here still mirror
-   * globals.css one-for-one; everything below is mobile-only surface treatment
-   * and has no web counterpart to drift from.
+   * Depth on top of the flat tokens above. Mobile-only.
    */
   // Glass: cards read as lit panes over the aurora rather than solid blocks.
   glass: 'rgba(255,255,255,0.045)',
@@ -39,6 +52,9 @@ export const colors = {
   // Ink for the floating tab bar and other "solid object" chrome.
   ink: '#100e18',
   inkEdge: 'rgba(255,255,255,0.08)',
+  /** Panel ground for a sheet that sits over a photograph. */
+  panel: 'rgba(10,9,15,0.90)',
+  panelSolid: 'rgba(12,11,20,0.97)',
 } as const;
 
 export type ColorToken = keyof typeof colors;

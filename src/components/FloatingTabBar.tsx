@@ -20,13 +20,16 @@ import {
   spring,
   fontSize,
   tabBar,
+  glow,
   useAnimatedValue,
 } from '../theme';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from './Text';
+import { PressableScale } from './PressableScale';
 import { haptics } from '../haptics';
 
 /**
- * The floating tab bar.
+ * The floating tab bar, and the raised action that sits in the middle of it.
  *
  * It began as a full-width strip welded to the bottom edge; it became a dark
  * capsule with a pill that faded in behind whichever icon was active. The fade
@@ -41,15 +44,41 @@ import { haptics } from '../haptics';
  * end, no wobble. The icon it lands under lifts and the label under it brightens
  * on the same beat.
  *
- * Wired via `tabBar={(props) => <FloatingTabBar {...props} />}` on a Tabs
- * navigator; screens must reserve `useTabBarInset()` of bottom padding.
+ * ── The centre action ─────────────────────────────────────────────────────
+ * The design this came from put "Studio" in the tab rail as a fifth
+ * destination, pointing at the colour step of a room. A tab has to be a place
+ * you can always go, and that one is not: with three rooms on the go it cannot
+ * know which room, and with none it has nothing to show. It is an ACTION —
+ * start a room, or carry on with the one you were in — so it is drawn as one:
+ * a raised accent capsule breaking the top edge of the bar, in the middle,
+ * where the thumb naturally rests.
+ *
+ * The row therefore lays out five slots for four routes, with the middle slot
+ * left empty for the action to sit over. The travelling indicator maps route
+ * index → slot index so it skips that gap rather than sliding underneath it.
+ *
+ * Wired via `tabBar={(props) => <FloatingTabBar {...props} action={…} />}` on a
+ * Tabs navigator; screens must reserve `useTabBarInset()` of bottom padding.
  */
+
+/** The raised centre button. Not a route — see the note above. */
+export interface TabBarAction {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  accessibilityHint?: string;
+}
 
 const ICON_SIZE = 22;
 /** Breathing room between the travelling indicator and the capsule's edge. */
 const INDICATOR_INSET = 4;
 
-export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function FloatingTabBar({
+  state,
+  descriptors,
+  navigation,
+  action,
+}: BottomTabBarProps & { action?: TabBarAction }) {
   const insets = useSafeAreaInsets();
 
   // BottomTabView hands every custom bar a setter for its own height and feeds
@@ -64,7 +93,23 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
   // keeps the whole travel on the native driver.
   const [innerWidth, setInnerWidth] = useState(0);
   const count = state.routes.length;
-  const itemWidth = count > 0 ? innerWidth / count : 0;
+  /** Slots = routes, plus one empty one in the middle when there is an action. */
+  const slotCount = action ? count + 1 : count;
+  const itemWidth = slotCount > 0 ? innerWidth / slotCount : 0;
+  /** Which slot the action occupies. Middle of the row. */
+  const actionSlot = Math.floor(slotCount / 2);
+  /** Route index → slot index, stepping over the action's gap. */
+  const slotOf = (routeIndex: number) =>
+    action && routeIndex >= actionSlot ? routeIndex + 1 : routeIndex;
+
+  /**
+   * The row, laid out. `null` is the gap the raised action sits over.
+   */
+  const slots: ({ route: (typeof state.routes)[number]; index: number } | null)[] = [];
+  state.routes.forEach((route, index) => {
+    if (action && slots.length === actionSlot) slots.push(null);
+    slots.push({ route, index });
+  });
 
   const slide = useAnimatedValue(state.index);
   useEffect(() => {
@@ -82,6 +127,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
       pointerEvents="box-none"
       onLayout={onLayout}
     >
+      <View style={styles.barWrap}>
       <View style={styles.bar}>
         {/* The lit top edge of the capsule. Light falls on a real object from
             above; without this the bar is a flat rectangle of dark paint. */}
@@ -102,7 +148,9 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
                     {
                       translateX: slide.interpolate({
                         inputRange: state.routes.map((_, i) => i),
-                        outputRange: state.routes.map((_, i) => i * itemWidth + INDICATOR_INSET),
+                        outputRange: state.routes.map(
+                          (_, i) => slotOf(i) * itemWidth + INDICATOR_INSET,
+                        ),
                       }),
                     },
                   ],
@@ -113,7 +161,9 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             </Animated.View>
           ) : null}
 
-          {state.routes.map((route, index) => {
+          {slots.map((slot) => {
+            if (slot === null) return <View key="action-slot" style={styles.item} />;
+            const { route, index } = slot;
             const { options } = descriptors[route.key];
             const focused = state.index === index;
             const title = options.title ?? route.name;
@@ -152,6 +202,28 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             );
           })}
         </View>
+      </View>
+
+      {action && itemWidth > 0 ? (
+        <PressableScale
+          onPress={action.onPress}
+          haptic="press"
+          activeScale={0.94}
+          accessibilityRole="button"
+          accessibilityLabel={action.label}
+          accessibilityHint={action.accessibilityHint}
+          style={StyleSheet.flatten([
+            styles.action,
+            {
+              // Centred on its own empty slot rather than on the bar, so it
+              // stays put if the number of tabs ever changes.
+              left: spacing.xs + actionSlot * itemWidth + itemWidth / 2 - ACTION_SIZE / 2,
+            },
+          ])}
+        >
+          <Ionicons name={action.icon} size={26} color="#f7f5ff" />
+        </PressableScale>
+      ) : null}
       </View>
     </View>
   );
@@ -232,7 +304,27 @@ export function useTabBarInset(): number {
   return height ? height + spacing.md : 0;
 }
 
+/** Diameter of the raised centre action, and how far it breaks the bar's edge. */
+const ACTION_SIZE = 54;
+const ACTION_LIFT = 12;
+
 const styles = StyleSheet.create({
+  barWrap: {
+    position: 'relative',
+  },
+  action: {
+    position: 'absolute',
+    bottom: (tabBar.height - ACTION_SIZE) / 2 + ACTION_LIFT,
+    width: ACTION_SIZE,
+    height: ACTION_SIZE,
+    borderRadius: ACTION_SIZE / 2,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: alpha('#ffffff', 0.18),
+    ...glow(colors.accent, 0.5, 20),
+  },
   wrap: {
     position: 'absolute',
     left: 0,

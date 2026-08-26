@@ -3,16 +3,16 @@ import { View, StyleSheet, ScrollView, FlatList, ActivityIndicator } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Text,
-  Serif,
   Input,
   Chip,
   StatusPill,
   Aurora,
   Segmented,
   BackLink,
+  Disclosure,
   useTabBarInset,
 } from '../components';
-import { colors, spacing, fontSize } from '../theme';
+import { colors, spacing } from '../theme';
 import { useShadesInfinite, useShadeFamilies } from './queries';
 import { ShadeSummary, BrandSummary } from '../api';
 import { ShadeDetailSheet } from './ShadeDetailSheet';
@@ -154,9 +154,7 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
         >
           {extraHeader}
           <View style={styles.companyHead}>
-            <Text variant="display">
-              <Serif size={fontSize.display}>{headerTitle}</Serif>
-            </Text>
+            <Text variant="display">{headerTitle}</Text>
             <Text variant="bodySoft">Start with the paint company, then find your colour.</Text>
           </View>
           <CompanyPicker
@@ -183,7 +181,7 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
 
       <View style={styles.titleRow}>
         <Text variant="display" numberOfLines={2} style={styles.title}>
-          <Serif size={fontSize.display}>{activeCompany.name}</Serif>
+          {activeCompany.name}
         </Text>
         {total != null ? <StatusPill label={`${total.toLocaleString()} shades`} tone="neutral" /> : null}
       </View>
@@ -201,6 +199,16 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
         onChange={setDepth}
         accessibilityLabel="Filter by how light or dark the shade is"
       />
+
+      {/* Cached shades still on screen after a failed refresh. Saying so beats
+          both a silent stale list and an error page over data that is right. */}
+      {shadesQuery.isError && shades.length > 0 ? (
+        <View style={styles.offline}>
+          <Text variant="caption" color={colors.warning}>
+            No connection — showing the shades saved on this phone.
+          </Text>
+        </View>
+      ) : null}
 
       {(familiesQuery.data?.length ?? 0) > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -245,6 +253,13 @@ export function ShadeLibrary({ headerTitle = 'Shades', extraHeader, tryLabel, on
           shadesQuery.isFetching ? (
             <View style={styles.footer}>
               <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : shades.length > 0 ? (
+            /* Said once, at the end of the grid, rather than pasted above every
+               section: paint on a screen is not paint on a wall, and the person
+               who wants that spelled out is the one who has finished looking. */
+            <View style={styles.footer}>
+              <Disclosure kind="colour" />
             </View>
           ) : null
         }
@@ -294,6 +309,14 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md },
   title: { flexShrink: 1 },
   chips: { gap: spacing.sm, paddingVertical: spacing.xs },
+  offline: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: spacing.md,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassEdgeSoft,
+  },
   column: { gap: spacing.md },
   card: { flex: 1 },
   footer: { paddingVertical: spacing.lg, alignItems: 'center' },

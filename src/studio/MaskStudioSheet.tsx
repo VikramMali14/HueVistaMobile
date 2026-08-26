@@ -775,7 +775,7 @@ export function MaskStudioSheet({
 
           {mode !== 'detect' && !editTarget ? (
             <View style={styles.group}>
-              <Text variant="overline">What is it?</Text>
+              <Text variant="eyebrow">What is it?</Text>
               <View style={styles.categories}>
                 {CATEGORIES.map((c) => (
                   <Chip
@@ -791,7 +791,7 @@ export function MaskStudioSheet({
 
           {error ? (
             <View style={styles.group}>
-              <Text variant="body" color={colors.danger}>
+              <Text variant="body" color={colors.dangerSoft}>
                 {error}
               </Text>
               {/* The way through, named. Detection failing is not the end of the

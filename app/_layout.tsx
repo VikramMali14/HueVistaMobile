@@ -13,39 +13,28 @@ import { queryClient } from '../src/query/client';
 import { persistOptions } from '../src/query/persist';
 import { loadHapticsPreference } from '../src/haptics/preference';
 
-import type { UserRole } from '../src/api/schemas';
-
 /**
- * Where each role lands after signing in. One app for every role (PLAN §2.3):
- * the server says which one this account is, and the app mounts that role's tab
- * navigator.
+ * Send the user to the right half of the app whenever auth resolves or changes:
  *
- * ADMIN used to land on `/counter` on the grounds that admin tools stay on the
- * web (§2.4). That rule still holds — nothing in `(admin)` provisions anything —
- * but the landing was wrong: it dropped an admin into a RETAILER navigator, so
- * they got a shop counter that was not their shop (no org, so an empty plan
- * meter and codes they cannot issue) and, because the retailer tab set has
- * neither, no dashboard and no studio anywhere in the app. They now get their
- * own group with both.
- */
-const HOME_FOR_ROLE: Record<UserRole, string> = {
-  CUSTOMER: '/home',
-  RETAILER: '/counter',
-  PAINTER: '/jobs',
-  DISTRIBUTOR: '/network',
-  ADMIN: '/admin-dashboard',
-};
-
-/**
- * Redirect the user to the right area whenever auth state resolves or changes:
- *   unauthenticated  → /welcome (unless already in the auth group)
- *   authenticated    → that role's tab navigator (see HOME_FOR_ROLE)
+ *   unauthenticated → /welcome, unless they are already somewhere in `(auth)`
+ *   authenticated   → /home
  *
- * Once inside their area the user navigates freely; this only fires on the
- * boundary (auth group or the initial index route), so there are no loops.
+ * There is one destination now. The app used to be five apps in a trench coat —
+ * a shop counter, a painter's job list, a distributor network and an admin
+ * console rode along with the customer's, and this gate picked between them by
+ * role. All of that runs on the web, where it belongs: a phone in a customer's
+ * hand is for seeing a wall in a colour, and everything else was weight.
+ *
+ * A non-customer account that signs in here still gets the customer app, which
+ * is the honest outcome — the screens their role needs are simply not in this
+ * build, and they have a browser.
+ *
+ * The gate only fires on the boundary (the auth group, or the bare index
+ * route), so navigation inside the app never re-triggers it and there are no
+ * redirect loops.
  */
 function useAuthGate() {
-  const { status, role } = useSession();
+  const { status } = useSession();
   const segments = useSegments();
   const router = useRouter();
 
@@ -58,11 +47,8 @@ function useAuthGate() {
       if (!inAuthGroup) router.replace('/welcome');
       return;
     }
-    // authenticated
-    if (inAuthGroup || root === undefined) {
-      router.replace((role && HOME_FOR_ROLE[role]) ?? '/coming-soon');
-    }
-  }, [status, role, segments, router]);
+    if (inAuthGroup || root === undefined) router.replace('/home');
+  }, [status, segments, router]);
 }
 
 function RootNavigator() {

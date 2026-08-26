@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Animated, LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import { Canvas, Circle, RadialGradient, Rect, LinearGradient, vec } from '@shopify/react-native-skia';
-import { colors, alpha, duration, easing, useAnimatedValue } from '../theme';
+import { colors, alpha, duration, easing, useAnimatedValue, useReducedMotion } from '../theme';
 
 /**
  * The ambient background every screen sits on: a vertical wash that blooms
@@ -51,6 +51,10 @@ const CLOUDS = [
 export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const drift = useAnimatedValue(0);
+  // A background that drifts forever is the first thing a person sensitive to
+  // motion notices, and it is behind every screen in the app.
+  const reduced = useReducedMotion();
+  const moving = animated && !reduced;
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -58,7 +62,7 @@ export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
   };
 
   useEffect(() => {
-    if (!animated) return;
+    if (!moving) return;
     // One long loop up and back. Reversing rather than resetting keeps the
     // clouds from snapping back to their start position every cycle.
     const loop = Animated.loop(
@@ -79,7 +83,7 @@ export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
     );
     loop.start();
     return () => loop.stop();
-  }, [animated, drift]);
+  }, [moving, drift]);
 
   const base = tint || colors.accent;
 

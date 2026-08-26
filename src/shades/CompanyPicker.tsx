@@ -82,7 +82,7 @@ function CompanyCard({ company, onPress }: { company: BrandSummary; onPress: () 
 
         <View style={styles.body}>
           <View style={styles.meta}>
-            <Text variant="heading" numberOfLines={1}>
+            <Text variant="subhead" numberOfLines={1}>
               {company.name}
             </Text>
             <Text variant="caption">

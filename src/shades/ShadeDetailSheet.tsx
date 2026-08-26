@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SheetModal, Text, Button, PressableScale } from '../components';
+import { SheetModal, Text, Button, PressableScale, Disclosure } from '../components';
 import { colors, spacing, radius, alpha } from '../theme';
 import { useShadeDetail } from './queries';
 import { ShadeSummary } from '../api';
 import { shadeDisplay } from './shadeCodes';
 import { useShadeCodeScheme } from '../account/queries';
 import { HoldToWall } from './HoldToWall';
+import { useSavedShades } from './savedShades';
 import { depthOf, inkOn, lrvOf, undertone, DEPTH_LABEL, UNDERTONE_DOT } from './colorScience';
 
 interface Props {
@@ -23,7 +24,7 @@ interface Props {
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.fact}>
-      <Text variant="overline">{label}</Text>
+      <Text variant="eyebrow">{label}</Text>
       <Text variant="body" numberOfLines={2}>
         {value}
       </Text>
@@ -47,6 +48,7 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try 
   // Enabled only when we have a brand slug + code; disabled (and null) when closed.
   const { data: detail } = useShadeDetail(shade?.brandSlug ?? undefined, shade?.shadeCode);
   const scheme = useShadeCodeScheme().data;
+  const { isSaved, toggle } = useSavedShades();
   const [wallOpen, setWallOpen] = useState(false);
 
   const hex = detail?.hexCode ?? shade?.hexCode ?? undefined;
@@ -67,6 +69,19 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try 
   const family = detail?.shadeFamily ?? shade?.shadeFamily ?? null;
   const finishes = detail?.finishRecommendations ?? shade?.finishRecommendations ?? null;
   const ink = hex ? inkOn(hex) : null;
+
+  /** The shape the saved-shade store keeps, built from whichever half loaded. */
+  const asShade = shade
+    ? {
+        code: shade.shadeCode,
+        name: detail?.name ?? shade.name ?? shade.shadeCode,
+        hex: hex ?? '',
+        brand: brandName ?? '',
+        family: family ?? '',
+        brandSlug: shade.brandSlug ?? undefined,
+      }
+    : null;
+  const saved = asShade ? isSaved(asShade) : false;
 
   return (
     <>
@@ -98,10 +113,29 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try 
             </PressableScale>
 
             <View style={styles.head}>
-              <Text variant="title" numberOfLines={2}>
-                {display.label}
-              </Text>
-              <Text variant="mono" color={colors.fgSoft}>
+              <View style={styles.titleRow}>
+                <Text variant="title" numberOfLines={2} style={styles.title}>
+                  {display.label}
+                </Text>
+                {asShade && hex ? (
+                  <PressableScale
+                    onPress={() => toggle(asShade)}
+                    haptic="select"
+                    activeScale={0.9}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: saved }}
+                    accessibilityLabel={saved ? 'Remove from saved shades' : 'Save this shade'}
+                    style={StyleSheet.flatten([styles.save, saved ? styles.saveOn : null])}
+                  >
+                    <Ionicons
+                      name={saved ? 'bookmark' : 'bookmark-outline'}
+                      size={18}
+                      color={saved ? colors.accentSoft : colors.fgSoft}
+                    />
+                  </PressableScale>
+                ) : null}
+              </View>
+              <Text variant="code" color={colors.fgSoft}>
                 {brandName ? `${brandName} · ` : ''}
                 {display.code}
               </Text>
@@ -110,7 +144,7 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try 
             {tone && tone !== 'neutral' ? (
               <View style={styles.tone}>
                 <View style={[styles.toneDot, { backgroundColor: UNDERTONE_DOT[tone] }]} />
-                <Text variant="overline">undertone · {tone}</Text>
+                <Text variant="eyebrow">undertone · {tone}</Text>
               </View>
             ) : null}
 
@@ -121,6 +155,8 @@ export function ShadeDetailSheet({ shade, onClose, onTryOnWall, tryLabel = 'Try 
               {hex ? <Fact label="Hex" value={hex.toUpperCase()} /> : null}
               {finishes?.length ? <Fact label="Finishes" value={finishes.join(' · ')} /> : null}
             </View>
+
+            <Disclosure kind="colour" style={styles.disclosure} />
 
             <Button
               label={tryLabel}
@@ -161,6 +197,20 @@ const styles = StyleSheet.create({
   },
   heroFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   head: { marginTop: spacing.lg, gap: spacing.xs },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  title: { flex: 1 },
+  save: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.glassEdge,
+    backgroundColor: colors.glass,
+  },
+  saveOn: { borderColor: alpha(colors.accent, 0.5), backgroundColor: colors.accentGhost },
+  disclosure: { marginTop: spacing.lg },
   tone: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
   toneDot: { width: 9, height: 9, borderRadius: 5 },
   facts: {

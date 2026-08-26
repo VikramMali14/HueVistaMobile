@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Screen, Text, Card, Button, Input, StatusPill, BackLink } from '../src/components';
+import { Screen, Text, Card, Button, CodeInput, StatusPill, BackLink } from '../src/components';
 import { colors, spacing } from '../src/theme';
 import { verificationApi, userMessage, VerificationStatus } from '../src/api';
 import { useMyProfile } from '../src/account/queries';
@@ -71,7 +71,7 @@ export default function VerifyScreen() {
       <BackLink />
 
       <View style={styles.header}>
-        <Text variant="title">Verify your email</Text>
+        <Text variant="display">Check your email.</Text>
         <Text variant="bodySoft">
           Confirming your address keeps your account yours, and unlocks the actions that ask for
           it.
@@ -103,18 +103,23 @@ export default function VerifyScreen() {
                   We sent a code to {sent.destination ?? 'you'}. It lasts about{' '}
                   {Math.max(1, Math.round(sent.expiresInSeconds / 60))} minutes.
                 </Text>
-                <Input
-                  label="The code"
+                <CodeInput
                   value={code}
-                  onChangeText={setCode}
-                  keyboardType="number-pad"
-                  placeholder="6 digits"
+                  onChangeText={(next) => {
+                    setCode(next);
+                    setError(null);
+                  }}
+                  mode="numeric"
+                  invalid={!!error}
+                  onSubmitEditing={confirm}
+                  autoFocus
+                  accessibilityLabel="Verification code"
                 />
                 <Button
                   label="Confirm"
                   fullWidth
                   loading={busy}
-                  disabled={code.trim().length < 4}
+                  disabled={code.length < 6 || busy}
                   onPress={confirm}
                 />
                 <Button label="Send another" variant="ghost" fullWidth loading={busy} onPress={send} />
@@ -124,7 +129,7 @@ export default function VerifyScreen() {
             )}
 
             {error ? (
-              <Text variant="body" color={colors.danger}>
+              <Text variant="caption" color={colors.dangerSoft}>
                 {error}
               </Text>
             ) : null}
@@ -136,8 +141,8 @@ export default function VerifyScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.lg },
-  header: { gap: spacing.xs },
+  content: { gap: spacing.lg, paddingTop: spacing.lg },
+  header: { gap: spacing.md },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   form: { marginTop: spacing.md, gap: spacing.md },
 });

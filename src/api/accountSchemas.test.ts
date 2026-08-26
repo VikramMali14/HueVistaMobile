@@ -5,7 +5,7 @@ import {
   redeemAccountResponseSchema,
   shadeCodeSchemeSchema,
 } from './accountSchemas';
-import { projectPurchaseOptionsSchema } from './billing';
+import { planSchema, pdfAllowanceSchema } from './billing';
 
 describe('customerEntitlementSchema', () => {
   it('parses a shop-managed customer with projects left', () => {
@@ -84,30 +84,42 @@ describe('redeemAccountResponseSchema', () => {
   });
 });
 
-describe('projectPurchaseOptionsSchema', () => {
-  it('parses a project priced on both rails', () => {
-    const o = projectPurchaseOptionsSchema.parse({
-      subscribed: true,
-      pricingPlan: 'STARTER',
-      projectPricePoints: 65,
-      projectPricePaise: 6500,
-      reopenPricePoints: 9,
-      reopenPricePaise: 1000,
-      pointsBalance: 120,
-      validDays: 10,
-      availableCredits: 1,
+describe('planSchema', () => {
+  it('parses the free tier a self-serve customer is priced on', () => {
+    const p = planSchema.parse({
+      plan: 'FREE',
+      displayName: 'Free',
+      purchasable: false,
+      rank: 0,
+      extraProjectPriceInPaise: 19900,
+      extraProjectPriceWithTaxInPaise: 23482,
+      colorMatching: false,
     });
-    expect(o.pricingPlan).toBe('STARTER');
-    expect(o.projectPricePoints).toBe(65);
-    expect(o.reopenPricePoints).toBe(9);
-    expect(o.pointsBalance).toBe(120);
-    expect(o.availableCredits).toBe(1);
+    expect(p.purchasable).toBe(false);
+    expect(p.extraProjectPriceWithTaxInPaise).toBe(23482);
+    expect(p.colorMatching).toBe(false);
   });
 
-  it('reads an account with no plan and no points as all-zero rather than throwing', () => {
-    const o = projectPurchaseOptionsSchema.parse({});
-    expect(o.subscribed).toBe(false);
-    expect(o.pricingPlan).toBe('FREE');
-    expect(o.pointsBalance).toBe(0);
+  it('reads a tier with nothing but a name rather than throwing', () => {
+    const p = planSchema.parse({ plan: 'STARTER' });
+    expect(p.purchasable).toBe(false);
+    expect(p.extraProjectPriceWithTaxInPaise).toBe(0);
+  });
+});
+
+describe('pdfAllowanceSchema', () => {
+  it('parses a month with boards left', () => {
+    const a = pdfAllowanceSchema.parse({
+      imagesPerPdf: 4,
+      monthlyLimit: 10,
+      used: 3,
+      remaining: 7,
+    });
+    expect(a.remaining).toBe(7);
+    expect(a.imagesPerPdf).toBe(4);
+  });
+
+  it('reads an empty answer as no allowance at all', () => {
+    expect(pdfAllowanceSchema.parse({}).remaining).toBe(0);
   });
 });

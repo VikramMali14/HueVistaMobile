@@ -3,16 +3,30 @@
 The Android + iOS app for [HueVista](https://github.com/VikramMali14/HueVista) —
 an AI-powered paint shade visualizer for the Indian paint retail trade.
 
-One app, role-based experiences: **Customer · Retailer · Painter · Distributor**.
-Built with React Native + Expo (TypeScript, Expo Router) against the existing
-HueVista Spring Boot backend.
+**The customer's app.** Photograph a room, try real shades on its walls, and
+leave with a colour board the counter can mix from. Built with React Native +
+Expo (TypeScript, Expo Router) against the existing HueVista Spring Boot
+backend.
 
-## Status
+The counter, the painter's job list, the distributor network and the admin
+console are not here — they run on the web, where the people using them already
+sit at a screen. See [`PLAN.md`](PLAN.md) §2 for why, and for the full
+architecture and progress log.
 
-**Phase 0 complete — foundations.** The app scaffolding, design system, API
-client and auth session are in place and the app runs. The customer product
-(camera → visualizer → shades → share) is Phase 1. See [`PLAN.md`](PLAN.md) for
-the full phase plan and live progress.
+## The journey
+
+```
+Welcome ─► shop code · sign in · create account · browse as a guest
+                              │
+   Home ── Shades ── ( Start a room ) ── Library ── Account
+                            │
+        1 Photo → 2 Prepare → 3 Walls → 4 Adjust → 5 Colour
+                                          │
+                                Colour board ──► AI image
+```
+
+The step a room opens on is derived from the project itself, so a half-finished
+room resumes exactly where it was left — on any phone.
 
 ## Run it
 
@@ -268,16 +282,26 @@ Templates → System → Filesystem → "Enable Win32 long paths"** in Group Pol
 
 ```
 app/                 Expo Router routes (file-based)
-  _layout.tsx        Root: fonts, theme, providers (query + session), auth gate
-  index.tsx          Phase 0 landing (replaced by Welcome + role tabs in Phase 1)
+  _layout.tsx        Root: fonts, providers (query + session), auth gate
+  index.tsx          Launch
+  (auth)/            Welcome, sign in, create account, shop code, password reset, guest browse
+  (customer)/        Tabs: home, shades, library, account
+  studio/new.tsx     Step 1 — the photograph
+  studio/[id].tsx    Steps 2–5 — prepare, walls, adjust, colour
+  board/[id].tsx     Confirm, then the colour board
+  ai/[id].tsx        Choose a combination, wait, look
+  shade/[code].tsx   One shade, full screen
+  credits · buy      What you have, and getting more
 src/
-  theme/             Midnight Spectrum tokens, fonts, spacing/radius
-  components/        UI kit — Text, Button, Card, Pill, Input, SheetModal, StatTile, Meter, Screen
-  api/               Typed client (base URL from env, 401 auto-refresh, error normalization) + zod schemas
-  auth/             Session provider + secure token store (Keychain / Keystore)
-  account/          Customer entitlement, assigned products, shop shade-code scheme
-  shades/           Catalogue library + the shop's customer-code formatting
-  query/            React Query client
+  theme/             Midnight Spectrum tokens, type, motion, reduced-motion
+  components/        UI kit — Text, Button, Card, Swatch, CodeInput, Disclosure, EmptyState, …
+  studio/            The room flow, its three colour panels, the step model
+  engine/            Skia recolor — mask + luminance-preserving tint
+  api/               Typed client (env base URL, 401 auto-refresh, error normalization) + zod schemas
+  auth/              Session provider + secure token store (Keychain / Keystore)
+  account/           Entitlement, AI wallet, board allowance, profile
+  shades/            Catalogue, colour science (depth · undertone · LRV), saved and recent shades
+  query/             React Query client
 assets/              Icon, splash, adaptive-icon images
 .github/workflows/   CI: typecheck + lint + test
 ```
@@ -285,4 +309,3 @@ assets/              Icon, splash, adaptive-icon images
 ## Design & plan
 
 - [`PLAN.md`](PLAN.md) — implementation plan, locked decisions, backend API map, phase checklists. **The single source of truth for progress.**
-- [`design.html`](design.html) — visual design: 12 phone-screen mockups, app flow, navigation. Open in any browser.

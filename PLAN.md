@@ -1,24 +1,20 @@
 # HueVista Mobile — Implementation Plan (Handoff Document)
 
-> **Who this is for:** any AI agent or developer picking up the mobile app build.
-> Read this file top to bottom before writing any code. It contains everything
-> you need: context, locked decisions, design reference, API map, architecture,
-> and phase-by-phase task checklists.
+> **Who this is for:** any AI agent or developer picking up the mobile app.
+> Read this file top to bottom before writing any code.
 >
-> **How to use it:** work through the phases in order. As you complete a task,
-> flip its `- [ ]` to `- [x]` and commit the edit together with the work.
-> Append one line to the **Progress log** (bottom of this file) per work
-> session. This file is the single source of truth for what is done and what
-> is pending — keep it honest.
+> **How to use it:** append one line to the **Progress log** (bottom of this
+> file) per work session. This file is the single source of truth for what the
+> app is and what is pending — keep it honest.
 
 ---
 
 ## 1. Context — what HueVista is
 
 HueVista is an AI-powered paint shade visualizer for the Indian paint retail
-market. Users photograph a room and preview real catalogue shades (Asian
-Paints, Berger, Nerolac, Dulux, Nippon — ~8,000 shades) applied
-photorealistically before painting.
+market. A customer photographs a room and previews real catalogue shades
+(Asian Paints at launch — ~8,000 shades) applied photorealistically before
+painting, then leaves with a colour board the counter can mix from.
 
 Distribution follows the paint trade hierarchy:
 
@@ -26,356 +22,300 @@ Distribution follows the paint trade hierarchy:
 Distributor → Retailer (paying subscriber) → Painter → End Customer
 ```
 
-**User roles** (backend enum `UserRole`): `ADMIN`, `DISTRIBUTOR`, `RETAILER`,
-`PAINTER`, `CUSTOMER`. Organizations (`OrgType`) are `DISTRIBUTOR` or
-`RETAILER`; painters link to retailer orgs; customers enter via time-limited
-access codes issued by retailers.
+**This app is the last link only.** The backend still knows five roles
+(`ADMIN`, `DISTRIBUTOR`, `RETAILER`, `PAINTER`, `CUSTOMER`) and the website
+serves all of them; the phone serves `CUSTOMER`.
 
 **The repos:**
 
 | Repo | Stack | Role |
 |---|---|---|
-| `VikramMali14/HueVistaMobile` | React Native + Expo (TypeScript) | **This repo — the app this plan builds.** Created empty; scaffolding it is Phase 0. |
-| `VikramMali14/HueVista` | Spring Boot 4, Java 17, PostgreSQL, Flyway | Backend REST API — serves web AND mobile. **Do not modify** except for the explicitly listed additions in §9. |
+| `VikramMali14/HueVistaMobile` | React Native + Expo (TypeScript) | **This repo — the customer app.** |
+| `VikramMali14/HueVista` | Spring Boot 4, Java 17, PostgreSQL, Flyway | Backend REST API — serves web AND mobile. **Do not modify** except the additions in §9. |
 | `VikramMali14/HueVistaFrontEnd` | Next.js 15, React 19, TypeScript | Website. Source for design tokens, API client patterns, Zod schemas — **copy from it, never modify it** as part of mobile work. |
 
-The backend README (`HueVista/README.md`) documents the platform, subscription
-tiers, and core endpoints. Swagger is available at
-`http://localhost:8080/swagger-ui.html` when the backend runs locally.
+Swagger is at `http://localhost:8080/swagger-ui.html` when the backend runs
+locally.
 
 ---
 
 ## 2. Locked decisions — do not relitigate
 
-These were agreed with the owner. Change them only if the owner says so.
-
-1. **Separate repository** (this one) — not a folder in either existing
-   repo, not a monorepo.
+1. **Separate repository** (this one) — not a folder in either existing repo.
 2. **React Native + Expo, TypeScript, Expo Router.** Not Flutter, not native
    Swift/Kotlin, not a WebView wrapper.
-3. **One app for all roles.** After login the app reads the account's role and
-   renders that role's tab navigator. No separate per-role apps.
-4. **Admin stays on the web.** No admin screens in the mobile app.
-5. **Backend is consumed as-is.** Same JWT auth, same endpoints the website
+3. **The phone is the customer’s app.** One role, one navigator. The counter,
+   the painter’s job list, the distributor network and the admin console all
+   run on the web, where the people using them already sit at a screen — a
+   phone in a customer’s hand is for seeing a wall in a colour.
+
+   *This replaces the earlier "one app for all roles" decision.* That build
+   shipped four navigators and an admin group; roughly two-thirds of the code
+   and every screen with a table in it existed for someone who was not the
+   person holding the phone. A non-customer account that signs in here gets the
+   customer app, which is the honest outcome.
+4. **Backend is consumed as-is.** Same JWT auth, same endpoints the website
    uses. The only backend additions allowed are listed in §9.
-6. **Visual identity: "Midnight Spectrum"** carried over from the website
-   (tokens in §4). The app is dark-themed by design — one theme, no
-   light mode at launch.
-7. **Recolor engine runs on-device** (GPU, luminance-preserving — same
-   technique as the website's WebGL engine) so color changes stay instant and
-   free. AI segmentation stays server-side (it is quota-billed).
+5. **Visual identity: "Midnight Spectrum"**, carried over from the website
+   (tokens in §4). **Dark only.** The whole product is a room photograph with
+   paint on it, and a pale chrome throws its own cast over the one thing the
+   customer is judging.
+6. **Payment stays on the web.** Razorpay Checkout is a web flow and the app
+   carries no payment SDK. The app quotes the real, server-held price and hands
+   the browser the checkout; it never prints a number the server did not say.
+7. **Recolor runs on-device** (Skia, luminance-preserving — the same technique
+   as the website’s WebGL engine) so colour changes stay instant and free. AI
+   segmentation and AI rendering stay server-side; both are quota-billed.
 
 ---
 
-## 3. Design reference
-
-The full visual design — 12 phone-screen mockups, app map, navigation tables,
-rationale — lives next to this file: **`design.html`** (repo root — open it
-in any browser). Summary:
-
-### Entry flow (all users)
+## 3. The customer journey
 
 ```
-Open app ─► Welcome screen
-              ├─► Sign in (email / Google)          — existing accounts
-              ├─► Create account                    — new customers
-              ├─► "My paint shop gave me a code"    — access-code redeem (customer)
-              └─► Painter invite link (deep link)   — painter onboarding
-                        │
-                        ▼
-        Server returns role ─► app mounts that role's tab navigator
+Launch ─► Welcome
+            ├─► "I have a code from my shop"  ─► redeem  ─► signed in
+            ├─► Sign in ─► (forgot password: send code → reset)
+            ├─► Create account
+            └─► Browse the catalogue as a guest
+                          │
+                          ▼
+   Home ── Shades ── ( Start a room ) ── Library ── Account
+                            │
+                            ▼
+    1 Photo → 2 Prepare → 3 Walls → 4 Adjust → 5 Colour
+                                                   │
+                                          ┌────────┴────────┐
+                                          ▼                 ▼
+                                    Colour board ─────► AI image
+                                     save · share      save · share
 ```
 
-### Tabs per role
+### The tab bar
 
-| Role | Bottom tabs | Notes |
+Four destinations and one action: **Home · Shades · ( Start a room ) · Library
+· Account**, where the middle slot is a raised accent button rather than a tab.
+
+Starting a room is the app’s primary verb, not a place: with three rooms on the
+go a "Studio" tab cannot know which to open, and with none it has nothing to
+show. The room flow lives in its own stack outside the tabs, because a
+five-step job on a photograph wants the whole screen.
+
+### The five steps
+
+The step a room opens on is **derived from the project**, never from a counter
+the app keeps (`src/studio/roomStep.ts`, unit-tested). That is what makes a
+half-finished room resumable — closing the app on step 4 and coming back
+tomorrow, on another phone, lands on step 4, because the project is the only
+thing that knows.
+
+| Step | What it is | Backed by |
 |---|---|---|
-| CUSTOMER | Home · Shades · **Visualize (raised center)** · Projects · Account | Core loop: photo → try shades → save → share → order |
-| RETAILER | Counter · Codes · Orders · Painters · Account | Counter dashboard: AI quota meter, walk-ins, quick actions |
-| PAINTER | Jobs · Visualize · Earnings · Account | Jobs carry approved shades + litres + site address |
-| DISTRIBUTOR | Network · Codes · Reports · Account | Retailer health, renewals due, invites |
+| 1 · Photo | Camera, gallery or the sample room | `POST /api/images/upload`, `POST /api/projects` |
+| 2 · Prepare | Clean-up runs either way; the choice is **find the walls for me** vs **I’ll mark them myself** | `POST /api/projects/{id}/segment` (`maskMode: AUTO \| MANUAL`) |
+| 3 · Walls | Waiting, or what came back — including the two failure routes | poll `GET /api/projects/{id}` |
+| 4 · Adjust | Check what was found; redraw, add or remove a surface | `segment/point`, `regions/custom-mask`, `regions/{id}/mask` |
+| 5 · Colour | Shades · Palettes · Finder, with a before/after wipe | `PUT /api/projects/{id}/regions` |
 
-### Screens designed (see design.html for exact layouts)
+### Screens
 
-1. **Welcome** — brand moment, "Sign in" / "My paint shop gave me a code"
-2. **Shop code redeem** — code field `HV-XXXXXX`, shows linked shop card
-3. **Sign in** — email+password, Google, forgot password
-4. **Customer home** — big "Visualize a room" CTA, recent projects, AI picks
-5. **Camera capture** — full-screen camera, wall-detection overlay, gallery pick
-6. **Visualizer editor (hero screen)** — before/after compare slider, region
-   chips (Main wall / Left wall / Ceiling / + tap to add), quick shade row
-   (recently used first) with "All colours" into the full picker, "AI suggest"
-   + "Share" actions, auto-save indicator
-7. **Shade library** — company first, then that company's colours: search,
-   Light/Medium/Dark depth filter, family chips, swatch grid, shade detail
-   sheet with "Try on wall" and hold-to-wall
-8. **Share sheet** — WhatsApp, copy link, "Send to shop for a quote", save image
-9. **Retailer counter dashboard** — quota meter (e.g. 43/60), stat tiles
-   (walk-ins / active codes / pending orders / week's order value), "New
-   walk-in visualization" button, today's activity feed
-10. **Access codes** — list with status pills (ACTIVE / EXPIRING / EXPIRED),
-    bottom sheet: 3/7/14-day selector → "Create & send on WhatsApp"
-11. **Painter jobs list + job detail** — status pills (NEW / IN PROGRESS /
-    DONE·PAID), approved shades with codes and litres, site address +
-    navigate, "Add site photo", "Mark complete"
-12. **Distributor network** — territory stats, retailer rows with health dot,
-    renewal follow-ups, "Invite a new retailer"
-13. **Support chat** (all roles) — existing AI-assisted support module
+**Getting in** — launch · welcome · sign in · create account · redeem shop code
+(with the used/unknown refusals in place) · forgot password (send → enter code
+→ set new) · guest browse.
+
+**The app** — home (greeting, what you have, the one lit CTA, rooms in
+progress, latest AI image, popular shades) · shades (company → catalogue, with
+the offline notice) · shade detail · library (rooms · AI images · saved shades)
+· account (settings list).
+
+**The room** — the five steps, plus the working, failed-detection,
+camera-denied and unreadable-photo states.
+
+**What they leave with** — colour board (confirm → the board, saved to Photos
+or shared) · AI image (choose a combination and five real options → working →
+result).
+
+**Money** — rooms & AI images · buy (hands off to web checkout).
+
+**Also** — verify e-mail · your products (what the shop unlocked) · help &
+support.
 
 ---
 
 ## 4. Design tokens — Midnight Spectrum
 
-Copy these exactly (source: `HueVistaFrontEnd/src/app/globals.css`).
+Source of truth: `HueVistaFrontEnd/src/app/globals.css`. Everything down to
+`accentGhost` in `src/theme/colors.ts` mirrors it one-for-one; below that is
+mobile-only surface treatment with no web counterpart to drift from.
 
-```ts
-export const colors = {
-  bg:          '#0a090f',   // app background
-  bgDeep:      '#050409',
-  surface:     '#14131c',   // cards  (web uses #121119; mobile mockups use #14131c — pick one, stay consistent)
-  surface2:    '#1b1a26',   // sheets, elevated surfaces
-  fg:          '#eae8e3',   // primary text
-  fgSoft:      '#a7a4bb',   // secondary text
-  fgMute:      '#6d6a84',   // tertiary / disabled
-  accent:      '#7c5cff',   // electric purple — primary actions
-  accentSoft:  '#a080ff',
-  accentDeep:  '#5a3fcc',
-  rule:        'rgba(234,232,227,0.09)',  // hairline borders
-  success:     '#7fae84',   // sage
-  danger:      '#d0654c',   // terracotta
-  warning:     '#d9b45c',
-};
-```
+Three token facts worth knowing before touching a colour:
 
-**Type:** Space Grotesk (headings / display, weights 500–700, via
-`expo-font` + Google Fonts package), system default for body, JetBrains Mono
-(or platform mono) for shade codes, access codes, prices. Instrument Serif
-italic is the accent face, used for one or two emphasised words inside a sans
-headline (`<Serif>` in `src/components/Text.tsx`) — never for a whole line.
+- **A filled button’s ground is `accentDeep` (#5a3fcc), not `accent`.** White
+  on the bright accent is 4.35:1 — under AA at the 15pt a button label runs.
+- **The accent AS TEXT is `accentSoft` (#a080ff).** #7c5cff reads 4.56:1 on the
+  page and fails the moment the text lands on a surface rather than the page.
+- **`fgFaint` is never a word.** It is for rules and disabled glyphs; the
+  quietest legible text colour is `fgMute`.
 
-**Shape language:** content cards radius 20 (14 for dense rows and thumbnails),
-buttons 16, inputs 14, sheets 30, pills fully rounded. Status pills are
-UPPERCASE mono 8–10pt. Status colors: NEW=accent,
-IN PROGRESS/EXPIRING=warning, DONE/ACTIVE=success, EXPIRED/OVERDUE=danger.
+**Type.** Space Grotesk sets headlines, **Inter** sets everything else, and
+Instrument Serif italic is the accent face. Shade codes are Inter with tabular
+figures, **not** a mono face — JetBrains Mono draws a dotted zero that reads as
+an 8 at caption size, and the code IS the order at the counter.
+
+**The serif is rationed.** `SERIF_BUDGET` in `src/theme/typography.ts` names
+the three places that spend it. One italic word inside a sans headline is a
+device; on every headline it is a template, which is how the first pass of this
+design read.
+
+**The lit card is rationed too.** `Card tone="feature"` carries the corner wash
+and the lit top edge, and there is **one per screen** — the thing the screen
+exists to get done. Six identical flourishes on a screen point at nothing.
+
+**Shape.** Cards 20 (14 for dense rows), buttons 16, inputs 14, sheets 28,
+chips 12, pills round. Radii sit above the web’s flat 10 because both phone
+platforms draw their own chrome that round.
 
 ### 4.1 The aurora layer (mobile only)
 
-The tokens above mirror `globals.css` and must not drift from it. Everything
-below is mobile surface treatment with no web counterpart, and lives in
-`src/theme/{layout,motion}.ts` plus the "Aurora layer" block in `colors.ts`.
-
 - **Aurora background.** Every screen sits on `<Aurora>` (via `Screen`): a
   vertical wash blooming violet at the top over three drifting colour clouds,
-  rendered in Skia. `tint` biases it toward a colour — the Studio passes the
-  shade currently on the wall.
-- **Depth over borders.** Cards are translucent (`colors.glass`) with a
-  top-lit edge and a real shadow (`elevation.low|mid|high`), not opaque blocks
-  separated by hairlines. `glow(color)` lights an element in its own colour;
-  shade swatches use it so a wall of them reads as paint under light.
-- **The orb.** `<AuraOrb>` is the one hero figure — a glowing disc with a
-  progress ring, for the single number a screen is about (projects left, AI
-  quota).
-- **Floating tab bar.** `<FloatingTabBar>` is a dark capsule inset from all
-  three edges, drawn over the scene. It reports its height through
-  `BottomTabBarHeightContext`, and `Screen` reserves that space automatically —
-  screens never hardcode a tab-bar inset.
-- **Motion.** RN `Animated` with `useNativeDriver` only (transform/opacity), so
-  it survives a busy JS thread; durations and curves come from
-  `src/theme/motion.ts`. `<Reveal>` staggers sections in on mount;
-  `<PressableScale>` dips a control under the finger. Use `useAnimatedValue()`,
-  not `useRef(new Animated.Value())` — the latter trips `react-hooks/refs`.
-
-**Haptics.** Every control gives touch feedback through `src/haptics` — call
-the semantic intent (`haptics.select/tap/press/success/warning/error`), never
-`expo-haptics` directly. The module no-ops on web, swallows failures on devices
-with no haptic engine, and honours the user's opt-out toggle in Account
-(persisted; restored in the root layout by `loadHapticsPreference()`).
+  in Skia. `tint` biases it toward a colour — the room flow passes the shade
+  currently on the wall, so the room being painted lights the whole screen.
+- **Depth over borders.** Cards are translucent (`colors.glass`) with a top-lit
+  edge and a real shadow, not opaque blocks separated by hairlines.
+- **Floating tab bar.** A dark capsule inset from all three edges, drawn over
+  the scene, with one indicator that travels on a spring. It reports its height
+  through `BottomTabBarHeightContext` and `Screen` reserves that space, so no
+  screen hardcodes a tab-bar inset.
+- **Motion.** RN `Animated` with `useNativeDriver` only (transform/opacity).
+  Use `useAnimatedValue()`, not `useRef(new Animated.Value())` — the latter
+  trips `react-hooks/refs`. `useElapsedSeconds()` paces the two long waits.
+- **Reduced motion is honoured.** `useReducedMotion()` reads the OS setting
+  live; the aurora stops drifting and `<Reveal>` stops travelling and
+  staggering.
+- **Haptics.** Call the semantic intent (`haptics.select/tap/press/success/
+  warning/error`), never `expo-haptics` directly. The module no-ops on web and
+  honours the opt-out in Account.
 
 ---
 
 ## 5. Backend API map
 
 Base URL from env (`EXPO_PUBLIC_API_ORIGIN`, default `http://localhost:8080`).
-All endpoints below exist today. **Treat the backend controllers as the source
-of truth** — verify request/response shapes against the Java controllers or
-Swagger before wiring each screen; do not guess fields.
+**Treat the backend controllers as the source of truth** — verify shapes
+against the Java controllers or Swagger before wiring a screen; do not guess
+fields.
 
-| Feature | Endpoints (controller package in `HueVista`) |
+| Feature | Endpoints |
 |---|---|
-| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh`, Google OAuth (`auth/`) — JWT access + refresh token |
-| Verification | `/api/auth/verify/*` (email/SMS codes — gate before project creation when enabled) |
-| Image upload | `POST /api/images/upload` (multipart; server classifies via Claude) (`image/`) |
-| Shade catalogue | `GET /api/shades`, `/api/shades/{brand}`, `/{brand}/families`, `/{brand}/{code}` (`paint/`) — public. Signed-in twins `GET /api/shades/mine`, `/api/shades/mine/brands` apply the distributor's brand grant |
-| Shop presentation | `GET /api/me/shade-code-scheme` (`paint/`) — the shop's customer-code pattern + whether paint names are shown |
-| Projects | `POST/GET /api/projects`, `GET /api/projects/{id}`, `PUT .../regions`, `POST .../segment` (async — poll `GET .../status`), `POST .../segment/point` (SAM2 click refine), region mask endpoints, `POST .../send-to-shop`, `POST .../share` → `GET /api/shared/{token}` (`project/`) |
-| AI recommendations | `POST /api/projects/{projectId}/recommendations` (`ai/`) |
-| Billing | `POST /api/billing/subscriptions`, `GET /api/billing/subscriptions/current` (`billing/`) — Razorpay. `GET /api/billing/points/project-options` prices one more project and a reopen on both rails (reward points and money), reports the point balance, and counts paid-for projects not yet created — **retailers only**, since points are a shop currency. **Paying is a web Checkout flow — the app reads the price and links out** |
-| Orgs & access codes | `POST /api/organizations`, `POST /api/organizations/{orgId}/access-codes`, `POST /api/access-codes/redeem` (signed in), `POST /api/access-codes/redeem-account` (public, no login — provisions the customer and returns a session) (`account/`) |
-| Customer entitlement | `GET /api/me/entitlement` (project allowance, usage, access window), `POST /api/me/request-more-projects` (ask the shop), `GET /api/me/assigned-products` (`account/`) |
-| Painters | `POST /api/organizations/{retailerOrgId}/painter-invitations`, `POST /api/painter-invitations/redeem`, `GET /api/painters/me`, `PUT /api/painters/me`, `GET /api/painters/me/retailers`, by-retailer listing (`painter/`) |
-| Paint jobs | `/api/jobs` — `GET /mine/painter`, `GET /mine/customer`, `GET /{jobId}`, `POST /{jobId}/accept·decline·start·complete·cancel` (`painter/`) |
-| Store | `/api/store/{slug}` public storefront, `POST /{slug}/order`, `POST /{slug}/verify`, store links, wallet + redemptions per org (`store/`) |
-| Guest mode | `/api/guest/*` — limited browse without account (`guest/`) |
-| Support | `/api/support/*` — AI-assisted chat threads (`support/`) |
+| Auth | `POST /api/auth/register`, `/login`, `/refresh`, `/logout`, `/forgot-password`, `/reset-password`, `GET·PATCH /api/auth/profile`, `POST /api/auth/change-password`, `DELETE /api/auth/account` |
+| Verification | `POST /api/auth/verify/email/send` · `/confirm` — gates project creation when enabled |
+| Image upload | `POST /api/images/upload` (multipart; server classifies the photo and refuses a non-room with 422) |
+| Shade catalogue | `GET /api/shades`, `/paged`, `/brands`, `/{brand}`, `/{brand}/families`, `/{brand}/{code}`, `/match`, `/decode` — public |
+| Shop presentation | `GET /api/me/shade-code-scheme` — the shop’s code pattern and whether paint names are shown |
+| Rooms | `POST·GET /api/projects`, `GET /{id}`, `PATCH /{id}`, `DELETE /{id}`, `PUT /{id}/regions`, `POST /{id}/segment`, `/segment/point`, `/regions/custom-mask`, `PUT /regions/{id}/mask`, `GET /{id}/regions/{id}/mask` |
+| Colour boards | `POST /api/projects/{id}/colour-boards` (records and charges), `POST /{id}/close`, `GET /{id}/combos` |
+| AI images | `POST /api/projects/{id}/renders` (202, then poll), `GET /{id}/renders`, `GET /{id}/renders/{renderId}`, `GET /api/me/renders`, `/renderable-projects` |
+| AI palettes | `POST /api/projects/{id}/recommendations` — included in the room, not charged per ask |
+| Shop palettes | `GET /api/me/retailer-combos` — the customer’s own shop’s card |
+| Billing | `GET /api/billing/plans` (public; the free tier is what a self-serve customer pays), `GET /api/billing/pdf-allowance`, `GET /api/billing/ai-credits` |
+| Access codes | `POST /api/access-codes/redeem` (signed in), `POST /api/access-codes/redeem-account` (public — provisions the customer and returns a session) |
+| Entitlement | `GET /api/me/entitlement`, `POST /api/me/request-more-projects`, `GET /api/me/assigned-products` |
+| Sharing | `POST /api/projects/{id}/share`, `DELETE /{id}/share` |
+| Support | `/api/support/conversations*` — AI-assisted threads, a human on request |
 
 **Auth handling on mobile:** access token in memory; refresh token in
 `expo-secure-store` (Android Keystore / iOS Keychain) — the mobile equivalent
-of the website's HttpOnly cookie. Auto-refresh on 401, single-flight. Optional
-biometric unlock later (Phase 4).
+of the website’s HttpOnly cookie. Auto-refresh on 401, single-flight.
+
+**Not reachable from this app** (all of it web-side): the counter, access-code
+issuing, the painter and distributor modules, the store kiosk, reward points,
+subscriptions and every `/api/admin/*` route.
 
 ---
 
-## 6. App architecture (this repo)
+## 6. App architecture
 
 ```
 HueVistaMobile/
 ├── app/                          # Expo Router file-based routes
-│   ├── (auth)/                   #   welcome, sign-in, register, redeem-code, painter-invite
-│   ├── (customer)/               #   tabs: home, shades, visualize, projects, account
-│   ├── (retailer)/               #   tabs: counter, codes, orders, painters, account
-│   ├── (painter)/                #   tabs: jobs, visualize, earnings, account
-│   ├── (distributor)/            #   tabs: network, codes, reports, account
-│   └── _layout.tsx               #   root: fonts, theme, auth gate, role router
+│   ├── index.tsx                 #   launch
+│   ├── (auth)/                   #   welcome, sign-in, register, redeem-code,
+│   │                             #   forgot-password, browse-shades
+│   ├── (customer)/               #   tabs: home, shades, library, account
+│   ├── studio/new.tsx            #   step 1
+│   ├── studio/[id].tsx           #   steps 2–5
+│   ├── board/[id].tsx            #   confirm → the board
+│   ├── ai/[id].tsx               #   choose → working → result
+│   ├── shade/[code].tsx          #   one shade, full screen
+│   ├── credits.tsx, buy.tsx      #   what you have, and getting more
+│   ├── verify.tsx, support.tsx, assigned-products.tsx
+│   └── _layout.tsx               #   fonts, providers, auth gate
 ├── src/
-│   ├── api/                      # typed client per backend module (auth, projects, shades, jobs…)
-│   ├── auth/                     # token store (secure-store), session context, refresh logic
-│   ├── engine/                   # recolor engine (Skia/GL) — mask + luminance-preserving tint
-│   ├── components/               # ui kit: Button, Card, Pill, Meter, SwatchGrid, ShadeTray…
-│   ├── theme/                    # tokens from §4
-│   └── offline/                  # catalogue cache, project draft queue
-├── assets/                       # icon, splash, fonts
-├── app.json / eas.json           # Expo + build config
-└── .github/workflows/ci.yml     # typecheck + lint + test on PR
+│   ├── api/                      # typed client per backend module, zod-validated
+│   ├── auth/                     # secure token store, session context, refresh
+│   ├── engine/                   # Skia recolor — mask + luminance-preserving tint
+│   ├── studio/                   # the room flow, its panels and the step model
+│   ├── shades/                   # catalogue, colour science, saved/recent shades
+│   ├── account/                  # entitlement, wallet, profile queries
+│   ├── components/               # the UI kit
+│   └── theme/                    # tokens from §4
+└── .github/workflows/            # typecheck + lint + test on PR
 ```
 
-**Key libraries:** `expo` (SDK — latest stable), `expo-router`,
-`@shopify/react-native-skia` (recolor engine), `expo-camera`,
-`expo-image-picker`, `expo-secure-store`, `expo-notifications` (Phase 2),
-`react-native-razorpay` (Phase 2), `zod` (validation — reuse website schemas
-where possible), `@tanstack/react-query` (server state, retries, cache).
+**Key libraries:** `expo`, `expo-router`, `@shopify/react-native-skia` (recolor
+engine), `expo-image-picker`, `expo-media-library`, `react-native-view-shot`
+(the board), `expo-secure-store`, `zod`, `@tanstack/react-query`.
 
-**Recolor engine (the one genuinely new piece):** the website recolors in
-WebGL preserving per-pixel luminance so texture/shadows survive. On mobile,
-implement the same math as a Skia shader (or GL): for each pixel inside the
-region mask, replace hue/chroma with the target shade while keeping the
-original luminance. Masks come from the backend segmentation endpoints as
-images. **Build and prove this first in Phase 1 — it is the only technical
-risk.** A throwaway spike screen that loads a bundled test photo + mask and
-recolors at 60fps is the gate for the rest of Phase 1.
+**The recolor engine** is the one genuinely novel piece: for each pixel inside a
+region mask, replace hue and chroma with the target shade while keeping the
+original luminance, so texture and shadow survive. Every wall is drawn into
+**one** Skia canvas — a canvas per wall asks the driver for a full-screen GPU
+surface each and can exhaust graphics memory on a mid-range phone.
 
 ---
 
-## 7. Phase checklists
+## 7. What is left
 
-> Rules: finish phases in order; within a phase, tasks are roughly ordered.
-> Every phase ends with a working, committed, pushed app. Never leave the
-> repo in a state that doesn't build.
-
-### Phase 0 — Repository & foundations
-
-- [x] Create GitHub repo `VikramMali14/HueVistaMobile` (private) — done by owner, 2026-07-20
-- [x] Scaffold Expo app (TypeScript template, Expo Router), commit clean baseline — Expo SDK 57, React 19, RN 0.86
-- [x] Add theme module with §4 tokens; load Space Grotesk via expo-font — `src/theme/`
-- [x] Build base UI kit: Button, Card, Pill, Input, SheetModal, StatTile, Meter — `src/components/` (+ Text, Screen, Chip, StatusPill)
-- [x] Typed API client with base URL from env + error normalization — `src/api/` (zod-validated, 401 single-flight refresh)
-- [x] Auth store: secure-store refresh token, in-memory access token, 401 auto-refresh — `src/auth/` (verified against backend `AuthController`)
-- [x] CI workflow: typecheck + eslint + unit tests on every push — `.github/workflows/ci.yml`
-- [x] README.md: how to run (`npx expo start`), how to point at a backend, repo map
-
-### Phase 1 — Customer core (the product)
-
-> **Phase 1a delivered (2026-07-21):** recolor engine + spike, full auth flow,
-> role router, and the customer tab shell. Remaining Phase 1 work (camera →
-> upload → AI segmentation → full visualizer editor → live shade catalogue →
-> share) is Phase 1b. Status per task below.
-
-- [x] **Recolor engine spike** (see §6) — Skia luminance-preserving shader (`src/engine/`) + Visualize screen recoloring a bundled sample room/mask, with shade tray and press-and-hold compare. Typechecks, lints, bundles. ⚠️ **On-device interactive-framerate validation still pending** (needs the owner's Android phone) — that final check formally closes the gate.
-- [x] Welcome screen (brand moment, three entry paths) — `app/(auth)/welcome.tsx`
-- [x] Sign in / register / forgot password against existing endpoints — wired to the verified `AuthController` (`app/(auth)/`)
-- [ ] Google sign-in (expo-auth-session against existing Google OAuth flow) — button present but disabled; needs OAuth client IDs + `POST /api/auth/oauth2/exchange` wiring
-- [x] Access-code redeem — **both paths live.** Signed in: Account → "Link a paint shop" (`POST /api/access-codes/redeem`). Signed out: the Welcome `redeem-code` screen now runs the real **no-login** flow (`POST /api/access-codes/redeem-account`), which provisions a passwordless CUSTOMER account in the name the shop entered and returns a session the app adopts.
-- [x] Role router: on session start, mount tab navigator for the account's role (customer first; other roles show a "coming in phase 2/3" placeholder screen) — auth gate in `app/_layout.tsx` + `app/coming-soon.tsx`
-- [x] Customer home: CTA, recent projects, AI picks strip — `app/(customer)/home.tsx` (CTA + **live popular shades strip**; recent projects + AI picks are empty-state placeholders until the project/recommendation APIs are wired)
-- [x] Camera capture + gallery pick → `POST /api/images/upload` → create project — `app/new-project.tsx` via expo-image-picker (OS camera + gallery); handles the 422 "not a room" + 400 size/type rejections. (Custom full-screen camera with a wall-detection overlay is later polish.)
-- [x] Segmentation flow: trigger `POST .../segment`, poll status, handle failure — editor offers **AUTO** (AI wall detection) and **MANUAL** (mark them by hand); neither is charged here, because the project's single credit was taken at creation and covers the run and any retry of it. Polls `GET /status` every 2 s while `SEGMENTING`, surfaces `FAILED` + reason with retry, and turns each coded 402 into an action: `ASK_RETAILER` → ask the shop, `SUBSCRIPTION_REQUIRED` / `PROJECT_LIMIT_REACHED` → say what ran out. Marking a wall now happens in its own popup (`src/studio/MaskStudioSheet.tsx`) with two ways through: **Tap to detect** (`POST .../segment/point`) and **Draw it** — a finger-traced outline rasterized to a white-on-black PNG on device and saved via `POST .../regions/custom-mask`, which needs no model call, no credit and no network beyond the save. Detection failing now names drawing as the way through instead of ending the road. Choosing MANUAL detection opens the popup by itself once the photo clean-up lands. Hand-marked walls can be deleted, and any wall — AI-detected included — can have its edges refined (`PUT .../regions/{id}/mask`).
-- [x] Visualizer editor: region chips, shade tray, auto-save regions (`PUT .../regions`) — `src/studio/RoomEditor.tsx` behind the `app/project/[id].tsx` route: region chips, **multi-region composite recolor of the real masks** (Skia overlay shader + auth-fetched mask PNGs), per-swatch autosave. The canvas is sized from the photo's own aspect ratio (`src/engine/fitBox.ts`) and drawn `contain`, so a phone-shaped photo is shown whole — it used to be forced into a fixed 4:3 box with `cover`, cropping a portrait room to its middle band. ⚠️ **Real-mask recolor + segmentation need a running backend + device to validate** (not exercisable in CI). Before/after compare currently lives in the engine spike.
-- [x] Shade library: search + brand/family filters against `/api/shades`, offline cache — **live, and now shop-scoped**: a signed-in account only sees the paint companies it may work with (a customer's from their code, a shop's from `/api/shades/mine/brands`), and every code is rendered through the shop's own shade-code pattern with names hidden when the shop hides them. Signed-out browsing is unchanged. (`app/(customer)/shades.tsx`): server-side search + brand + family filters, infinite scroll via `/api/shades/paged`, shade detail sheet via `/{brand}/{code}` (AI-enriched), and React Query offline persistence of the catalogue (`src/query/persist.ts`). Contract verified against `ShadeController`.
-- [x] "Try on wall" from any shade → visualizer with shade preselected — via route param (sample shades); carries over to the live catalogue
-- [x] **Company → colour, everywhere paint is chosen.** The catalogue opens on the paint companies this account may work with and the grid that follows belongs to one of them; a shop restricted to a single company skips the step. Within a company: search, a Light/Medium/Dark depth filter (the backend's `tonality`), and family chips. The Studio and the room editor no longer paint from a dozen hardcoded demo swatches — both dock the same `ColourPanel` (`src/studio/ColourPanel.tsx`) **directly under the photo it paints**, over the real scoped catalogue, with recently-used colours (persisted locally) on top for flipping between candidates. It replaced a full-screen picker sheet, which took the phone over and hid the one thing a visualizer exists to show: the wall changing. Shade facts match the website exactly — undertone, depth, LRV, family, finishes — via `src/shades/colorScience.ts`, a port of the site's `lib/color-science.ts` that keeps its thresholds and its words; the AI prose the website never renders no longer surfaces here either. `HoldToWall` fills the screen with one colour to hold against a real wall.
-- [x] **Colour finder, on the room itself** — `src/studio/FinderPanel.tsx`. Tap any colour in your own photo and the nearest catalogue shades come back (`GET /api/shades/match`, ΔE-ranked), scoped to the shop's company when it stocks only one. The photo is already decoded for the canvas, so the lift is a single Skia `readPixels` averaged over a small patch (`src/engine/samplePixel.ts`). Parity with the website's `/color-finder`, which the phone never had.
-- [x] AI suggest: `POST .../recommendations` surfaced in editor — docked as the "Suggest" tab under the photo (`src/studio/SuggestPanel.tsx`) rather than a sheet over it, so a palette can be judged against the wall it is for. Claude's three palettes, each sized to the room (a photo with one wall marked comes back with one colour, not three), matched to real shades; tapping a colour paints the selected wall. Included in the project rather than quota-billed; the only 402 left is a project whose access window has closed. Contract verified against `ColorRecommendationController`.
-- [x] Projects list + detail (resume editing) — live list (`app/(customer)/projects.tsx`, `GET /api/projects` with authed thumbnails) + the editor as detail (persisted region colours reload). Contract verified against `ProjectController`.
-- [x] Share: native share sheet + share link (`POST .../share`) + save-to-gallery — editor "Share" generates a **10-day** link (the backend's new ceiling: a share link hands over the same repaint capability a walk-in code does, so the two expire on the same clock) pointing at the **website's** `/share/{token}` page — it used to point at the API endpoint behind it, so a recipient without the app opened raw JSON; "Save" captures the painted canvas (react-native-view-shot) and writes it to Photos (expo-media-library).
-- [ ] "Send to shop for a quote" — **located, still blocked for this app.** The setter is `POST /api/guest/projects/{id}/send-to-shop` (`GuestController`) and is scoped to a guest token; there is no equivalent on `ProjectController` for a signed-in customer. The app reads `sentToShopAt` already. Needs either the guest-project flow (below) or a backend addition — **still not guessed.**
-- [x] Verification (`/api/auth/verify/*`) — `app/verify.tsx` confirms e-mail and phone against the masked destination the server reports. A `VERIFICATION_REQUIRED` refusal on project creation routes here instead of printing a dead end.
-- [x] Manage a room — rename, delete (confirmed), and **withdraw a live share link** (`DELETE /{id}/share`), all from the editor header. A live link is stated where the owner can see it, because sharing hands a stranger the same repaint capability a walk-in code does.
-- [x] Account actions for every role — change password, delete account (confirmed, naming what goes), support, sign out. Shared in `src/account/AccountPanel.tsx` so the four roles cannot drift apart.
-- [x] Shop palettes in AI suggest — `GET /api/me/retailer-combos` leads the Suggest dock when the shop has any, above Claude's.
-- [x] The customer's paint jobs (`GET /api/jobs/mine/customer`) on their Account, when a shop has scheduled one.
-- [x] Guest browse mode (shade library only) — `app/(auth)/browse-shades.tsx` via the shared `ShadeLibrary` over the **public** `/api/shades` endpoints; reachable from Welcome, with a sign-up CTA on "Try on wall". (Guest *project creation* via `/api/access-codes/redeem-guest` + `/api/guest/*` is still pending.)
-
-### Phase 2 — Retailer counter mode (the subscriber)
-
-- [x] Retailer tab navigator + counter dashboard — `app/(retailer)/` (Counter · Codes · Customers · Plan · Account). Counter shows the plan in force, the project meter (allowance + bought + carried), reserved-behind-codes, stat tiles and the recent-codes feed. Tabs respect the distributor's page grant via `GET /api/hierarchy/my-access`.
-- [x] "New walk-in visualization" fast path — the counter's primary action opens the same camera → project → editor chain the customer uses.
-- [x] Access codes: list with status, create sheet, hand-off — `app/(retailer)/codes.tsx`: issue (name + rooms), extend, revoke, +1 project, and a native share sheet for WhatsApp/SMS. Quota is spent at issue time, so a 402 surfaces at the counter.
-- [x] Customer portal — `app/(retailer)/customers.tsx`: every customer the shop is responsible for (managed **or** holding a code it issued), with their allowance, access window, and one-tap "give another project".
-- [x] Painters: invite (code generation + share) and painter list — `app/painters.tsx`.
-- [x] Subscription screen: current plan + reward points — `app/(retailer)/plan.tsx`. Buying a project **with points** happens in-app (a balance debit, no gateway); subscribing and buying points link out to Razorpay Checkout on the web.
-- [ ] Orders list (store module) with status updates — the kiosk sells visualisations, not paint orders; there is no order queue endpoint to list. Wallet/kiosk client is built (`retailApi.wallet` / `storeLinks`), screen deferred.
-- [ ] Push notifications: backend device-token registration (§9), then — shared-look opened, new order, renewal reminder
-- [ ] Retailer onboarding polish: empty states that teach the walk-in flow
-
-### Phase 3 — Painter & distributor (the network)
-
-- [x] Painter invitation → redeem (`POST /api/painter-invitations/redeem`) → linked to the shop — in Painter → Account → "Add a shop's code". (A *deep link* that opens the app straight onto the redeem sheet is still pending; the code path itself is live.)
-- [x] Painter jobs list (`GET /api/jobs/mine/painter`) with status pills — `app/(painter)/jobs.tsx`, sorted so anything waiting on the painter leads.
-- [x] Job detail: litres, area, quote, address (opens in maps), and the one transition that is legal from where the job stands — accept / decline-with-reason / start / complete (`app/job/[id].tsx`). The approved colours are one tap away via the project. **Site photo upload still pending** — no job-photo endpoint exists.
-- [ ] Painter earnings screen — the wallet is a shop's point ledger, not a painter payout account; there is no painter earnings endpoint to read. Needs a backend addition before it can be honest.
-- [x] Painter gets the visualizer + catalogue — `app/(painter)/painter-shades.tsx` over the shared `ShadeLibrary`, and the same camera → editor chain.
-- [x] Distributor navigator: network dashboard — `app/(distributor)/` (Network · Account) over `GET /api/hierarchy/network`, with per-shop code issued/redeemed counts and an idle / low-uptake / active read.
-- [x] Distributor grants: which paint companies and which pages each shop may reach — `app/shop/[id].tsx` over `/api/hierarchy/retailers/{orgId}/brands` + `/features`. (Creating a retailer stays on the web.)
-- [x] Support chat screen (all roles) against `/api/support/*` — `app/support.tsx`, reachable from every role's Account.
-- [ ] Notifications inbox screen — `/api/support/inbox` is the ADMIN side of these threads, and admin stays on the web (§2.4). Nothing to mirror for the other roles.
-
-### Phase 4 — Launch (the stores)
-
-- [ ] App icon + splash (Midnight Spectrum brand)
-- [ ] EAS build profiles: dev / preview / production for both platforms
-- [ ] Crash reporting (sentry-expo) + basic analytics events (visualize started, share sent, code redeemed)
-- [ ] Over-the-air updates channel (EAS Update) for JS-only fixes
-- [ ] Store listings: screenshots from the design mockup set, descriptions (English + Kannada/Hindi)
-- [ ] Google Play submission (owner provides dev account) → closed testing → production
-- [ ] Apple App Store submission (owner provides dev account) → TestFlight → review
-- [ ] Post-launch: monitor crashes, fix, iterate
+- [ ] **A device pass against a running backend.** The whole chain — upload,
+      segmentation, drawn masks, board recording, render polling — is wired to
+      verified contracts but has not been exercised end to end on hardware.
+- [ ] **Google sign-in.** `POST /api/auth/oauth2/exchange` exists; the app has
+      no OAuth client IDs and no `expo-auth-session`. Do not ship a button
+      until both are real.
+- [ ] **Push notifications** — needs the §9 backend addition.
+- [ ] **Saved shades on the account.** They live on the device today because
+      no server-side list exists; `src/shades/savedShades.ts` is the seam.
+- [ ] **In-app purchase.** Blocked on §2.6 — revisit only if the store
+      guidelines force it.
 
 ---
 
-## 8. Working agreements for the executing agent
+## 8. Working agreements
 
-1. **Update this file as you go** — checkboxes + progress log. That is how the
-   owner (who is not a mobile developer) sees status.
+1. **Update this file as you go** — the progress log is how the owner (who is
+   not a mobile developer) sees status.
 2. **Small commits, clear messages**, conventional prefix (`feat:`, `fix:`,
-   `chore:`). Push at every stable point.
+   `chore:`).
 3. **Verify API shapes against the backend code/Swagger** before wiring a
-   screen; the table in §5 is a map, not a contract.
-4. **Never modify `HueVista` or `HueVistaFrontEnd`** except the §9 additions
-   (backend) — and do those on a branch with tests, matching that repo's
-   conventions (Flyway migration for any schema change).
-5. **Test on a real Android device early** (owner's phone via Expo Go /
-   dev build); iOS via Expo Go until Phase 4.
-6. **Keep the app runnable** — `npx expo start` must always work from a fresh
-   clone + `npm install`.
-7. **Ask the owner** before: spending money (accounts, services), changing a
-   §2 locked decision, or any backend change beyond §9.
+   screen; §5 is a map, not a contract.
+4. **Never modify `HueVista` or `HueVistaFrontEnd`** except the §9 additions.
+5. **Keep the app runnable** — `npx expo start` must work from a fresh clone +
+   `npm install`.
+6. **Never print a price, a count or a date the server did not say.** Every
+   number on a screen in this app is read from an endpoint. A hard-coded ₹99
+   is a promise the counter has to keep.
+7. **Every failure state gets a way onward.** An empty screen with no action is
+   a dead end, and this app had several.
+8. **Ask the owner** before: spending money, changing a §2 decision, or any
+   backend change beyond §9.
 
 ## 9. Allowed backend additions (only these)
 
-| When | Addition | Notes |
-|---|---|---|
-| Phase 2 | `POST /api/devices` (+ entity/migration) to register Expo push tokens per user; notification fan-out on: share-link opened, order created, job assigned, renewal approaching | Follow existing module conventions (`notification/` exists); Flyway migration; tests |
-| Phase 2 (optional) | Server-driven WhatsApp code send for access codes | Support module already has WhatsApp webhook plumbing to build on |
-| Phase 1 (optional, nice-to-have) | Phone-sized image variant in upload response | Only if mobile bandwidth proves painful; otherwise skip |
+| Addition | Notes |
+|---|---|
+| `POST /api/devices` (+ entity/migration) to register Expo push tokens; fan-out on share-link opened, board ready, render finished | Follow existing module conventions (`notification/` exists); Flyway migration; tests |
+| A per-user saved-shade list | Would replace the on-device store in `src/shades/savedShades.ts` |
+| Phone-sized image variant in the upload response | Only if mobile bandwidth proves painful; otherwise skip |
 
 ---
 
@@ -385,6 +325,7 @@ recolors at 60fps is the gate for the rest of Phase 1.
 
 | Date | Phase | Summary |
 |---|---|---|
+| 2026-08-26 | Customer-only | **The app is one app now — the customer's — and the design it was built from was audited rather than transcribed.** Four navigators, an admin group and eleven screens for people who are not holding the phone came out (`(admin)`, `(retailer)`, `(painter)`, `(distributor)`, the kiosk, the counter, the painter list, the products manager and the API modules behind them), and the auth gate stopped branching on role. **The end of a room was missing entirely.** The phone could paint a wall and then had nowhere to put the result — `colour-boards`, `close`, `combos`, `renders`, `/me/renders` and the AI wallet had no client at all, so a room never finished. All of them are wired now: a board records what the customer commits to (which is the only moment those colours can be captured, since the sheet is drawn on the device), is saved to Photos with `view-shot`, and an AI image is made from a combination that actually went onto one. **The five-step flow is real and derived.** `stepOfProject` reads the step off the project rather than a counter the app keeps, so a room left half-finished resumes on the step it was left on, from any phone (unit-tested, ten cases). **Six things the design got wrong were corrected rather than copied.** Step 2's three checkboxes (remove furniture / remove wall art / straighten) map to nothing the backend takes — the real fork is `maskMode`, AUTO vs MANUAL, which is also the answer to "what if the AI is wrong about my room". "Studio" cannot be a tab: with three rooms open it does not know which to show, so it became the raised action in the middle of the bar and the room flow moved into its own stack. "Email me a code instead" and "Continue with Google" are not things this product can do — `/auth/login/otp` is an ADMIN second factor and there is no OAuth client — so the passwordless route offered is the shop code, which is real; meanwhile **forgot-password was a genuine dead end** (it sent a code and had nowhere to type it, and `resetPassword` was not even in the client) and is now a complete flow. The confirm screen's flat "downloading closes the project · 1 of 1" is read from the server's own allowance, because telling someone their room is finished when it has a board left is what stops people finishing. "Code already used" invented a date and a branch the API does not return. Every hard-coded price (₹99 / ₹249 / ₹29) is now read from `/billing/plans` or the wallet. **And the design read as machine-made for reasons that are fixable:** the same italic-serif headline trick on twenty-two screens (now rationed to three, written down in `SERIF_BUDGET`), the same violet corner-wash on every card (now one lit `Card tone="feature"` per screen, the thing the screen exists to get done), an uppercase eyebrow above every group (rationed), and the colour disclaimers pasted at full length into eleven places (now one collapsible `<Disclosure>` that is present everywhere and readable in the one place someone wants to read it). **Added on top of the design:** a drag-to-wipe before/after over the painted room, depth and undertone printed on the swatches themselves (the product's own expertise, previously buried on one detail screen), saved shades, an AI-image shelf in the library, `prefers-reduced-motion` honoured throughout, and Inter loaded so a sentence has the same colour and rhythm as it does on the site. Verified: `tsc` clean, eslint clean, 185 unit tests pass (up from 164), `expo export` bundles (5.7 MB). ⚠️ The board recording, render polling and camera chain are wired to verified contracts but need a device against a running backend. **Deliberately not built:** a light theme (§2.5 — the wall must stay the brightest thing on screen), Google sign-in (no client IDs), and in-app purchase (§2.6). |
 | 2026-08-03 | Phase 3 | **The Studio, rebuilt around the room.** Six things reported from a real phone, all of them ours. **The photo was cropped.** The editor drew every room into a fixed 4:3 box with Skia's `cover`, so a phone-shaped photo — the normal case, since these are taken on the phone showing them — lost roughly a quarter of its height, often the top of the wall being painted. `src/engine/fitBox.ts` now derives the box from the photo and everything is drawn `contain`; `tapToPhotoPoint` learned the fit so a tap still lands where the finger did. **Choosing a colour took the phone over.** The catalogue was a full-screen sheet and the AI palettes a sheet over the room, so the wall — the only thing a visualizer exists to show — was hidden at exactly the moment it changed. All three colour tools are now docked under the photo behind one segmented control: `ColourPanel` (the scoped catalogue, filters and a grid that grows on demand rather than scrolling inside a scroll), `SuggestPanel` (shop palettes then Claude's), and `FinderPanel`. **The colour finder had never reached the phone** even though the phone is where the photo is taken: tap any colour in your own room and the nearest catalogue shades come back, ΔE-ranked and scoped to what the shop can sell — one Skia `readPixels` averaged over a patch, then the matcher the website already calls. **Marking a wall was one path with no fallback.** It went through SAM 2, and every failure of it was terminal — plus nothing said which of the three hidden preconditions had not been met. `MaskStudioSheet` is now a popup with two ways through: tap to detect, and **draw it** — a finger-traced outline rasterized on device to a white-on-black PNG and saved through `POST .../regions/custom-mask`, which needs no model, no credit and no network beyond the save. A failed detection now names drawing by its name instead of ending the road, choosing MANUAL opens the popup by itself when the clean-up lands, and any wall — AI-detected included — can be redrawn (`PUT .../regions/{id}/mask`). **Share links opened raw JSON.** The backend minted them against the API origin (`…/api/share/{token}`), so a recipient without the app read the response body instead of seeing the room; they now point at the website's `/share/{token}` page (`app.web-base-url`, falling back to the first CORS origin). **And the tab bar cross-faded.** One indicator now travels between tabs on a spring, the way iOS's does, with labels under the icons; sheets came down to a drag on the grabber and the segmented thumb became a lifted neutral pane rather than a tinted one. Verified: `tsc` clean, eslint clean, 170 unit tests pass (up from 154), `expo export` bundles (5.5 MB), and the backend's share-link test passes. ⚠️ The drawn-mask round trip, the eyedropper and the marking popup need a device against a running backend to confirm end-to-end. **Deleted:** `ShadePickerSheet` and `RecommendationsSheet`, both of which the dock replaces. |
 | 2026-07-31 | Phase 2 + 3 | **An admin now has a home, every painting role has a Studio, and photos actually load.** Three findings from the first real device+backend session, all of them ours. **Photos never appeared.** `resolveImageUrl` returns either an origin-relative `/api/images/files/…` path (local storage) or an absolute **S3 presigned** URL, and the app attached the bearer token to both. S3 refuses a presigned request that also carries an `Authorization` header — `400 InvalidArgument`, "only one auth mechanism allowed" — so with S3 storage configured every room photo, region mask and thumbnail failed. New `isApiOriginUrl` (host-compared, default-port- and case-insensitive, tested against lookalike hosts) now decides per URL, matching the distinction the website draws in `src/lib/media.ts`. **And the failure was invisible:** `useAuthedSkImage` returned null for "loading" and "failed" alike, so the editor showed its spinner over a photo that was never coming. `useAuthedSkImageState` reports status, and the editor says so with a Try again. **ADMIN landed in the retailer navigator** (`HOME_FOR_ROLE.ADMIN = '/counter'`) — a shop counter that was not their shop, with an empty plan meter, codes they cannot issue, and no dashboard or studio anywhere, because the retailer tab set has neither. New `app/(admin)/` group: Dashboard · Studio · Shades · Account, over the read-only halves of `AdminController` (`/admin/stats`, `/stats/revenue`, `/stats/ai-usage`, `/users/recent`) via a new `admin.ts` + zod schemas. Provisioning stays on the web (§2.4) and the account tab says so; the dashboard leads with the wall-detection failure rate, which is the only figure there that means something is broken. **The Studio was still the Phase-1 spike** — a bundled sample room with no route to the user's own walls. Shared `StudioScreen` (start a room, your saved rooms, sample-wall shade try-on with the way through to a real one) replaces `(customer)/visualize.tsx`, and is now a tab for customer, painter (whose layout comment had claimed a visualizer tab that did not exist) and admin. Verified: `tsc` clean, eslint clean, 110 unit tests pass (up from 99), `expo export` bundles (5.6 MB). ⚠️ The S3 half of the image fix is reasoned from the contract, not observed — it needs a device against an `S3_BUCKET_NAME` deployment to confirm. **Not changed:** the retailer tab set (its counter already links into the same flow, and a sixth tab crowds the bar) and the distributor's (no Studio, deliberately). |
 | 2026-07-31 | Phase 2 + 3 | **Full web scan → all four roles now exist in the app.** Enumerated every backend endpoint and every website route against what the app called, and closed the gap rather than only the recent delta. **New API layer:** organisations + hierarchy (`org.ts`), the counter (`retail.ts` — codes, customers, grants, combos, kiosk link, points statement), painters and paint jobs (`painter.ts`), subscription + reward points + PDF allowance (`billing.ts`), support threads (`support.ts`), verification and profile management (`auth.ts`). All zod-validated against the Java DTOs. **Role routing:** the auth gate now mounts a real navigator per role instead of sending three of the four to a placeholder — `HOME_FOR_ROLE` in `app/_layout.tsx`. **Retailer** (`app/(retailer)/`): counter dashboard with the project meter that counts allowance + bought + carried and names what is reserved behind unredeemed codes; access codes (issue, extend, revoke, +1 project, share); the customer portal with one-tap grants; and the plan screen, where spending points on a project happens in-app while Checkout stays on the web. Tabs honour the distributor's page grant. **Painter** (`app/(painter)/`): job list led by whatever is waiting on them, job detail offering only the transition that is legal from where the job stands, maps hand-off, decline-with-reason, shop linking by invitation code, and the catalogue. **Distributor** (`app/(distributor)/`): the network with per-shop uptake, and per-shop grants of paint companies and pages — including the rule that an empty selection means *unrestricted*, said on screen because assuming the opposite would lock a shop down by accident. **Every role** gained verification, change-password, delete-account and support, shared in one component. **Customer tail:** rename/delete a room, withdraw a live share link, shop palettes ahead of Claude's in the suggest sheet, and their own paint jobs. Verified: `tsc` clean, eslint clean, 99 unit tests pass (up from 79), `expo export` bundles (5.6 MB). ⚠️ Needs a running backend + device to exercise end-to-end. **Deliberately not built:** admin (stays on the web, §2.4); painter earnings and job site photos (no endpoint exists — flagged, not guessed); the kiosk order queue (the kiosk sells visualisations, not paint orders); push notifications (§9 backend addition). |

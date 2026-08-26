@@ -14,6 +14,8 @@ export interface ButtonProps {
   disabled?: boolean;
   loading?: boolean;
   icon?: React.ReactNode;
+  /** Pushed to the far right — a price, a count, a chevron. */
+  trailing?: React.ReactNode;
   fullWidth?: boolean;
   style?: ViewStyle;
   accessibilityLabel?: string;
@@ -25,11 +27,18 @@ export interface ButtonProps {
   haptic?: 'press' | 'tap' | 'select' | 'none';
 }
 
+/**
+ * A filled button's ground is `accentDeep`, not `accent`.
+ *
+ * White on #7c5cff is 4.35:1 — under AA at the 15pt a button label runs. The
+ * deep cut is 6.96:1. The web's own stylesheet worked this out and left the
+ * note; the phone had been using the bright cut and failing the same check.
+ */
 const bg: Record<Variant, string> = {
-  primary: colors.accent,
+  primary: colors.accentDeep,
   secondary: colors.glassStrong,
   ghost: 'transparent',
-  danger: colors.danger,
+  danger: colors.warmFill,
   outline: 'transparent',
 };
 
@@ -37,7 +46,7 @@ const fg: Record<Variant, string> = {
   primary: '#ffffff',
   secondary: colors.fg,
   ghost: colors.accentSoft,
-  danger: '#ffffff',
+  danger: '#f7f5ff',
   outline: colors.fg,
 };
 
@@ -50,10 +59,11 @@ const border: Record<Variant, string> = {
 };
 
 /**
- * The app's action. Primary carries a coloured glow so the one thing worth
- * tapping on a screen actually looks lit; `outline` is the quiet
- * dashed-adjacent variant used on the aurora hero screens, where a filled
- * button would sit on the gradient like a sticker.
+ * The app's action.
+ *
+ * Primary carries a coloured glow, and that glow is the reason a screen has at
+ * most one of these: it is how the eye finds the single thing the screen exists
+ * to get done. Two lit buttons on one screen is two primaries, which is none.
  */
 export function Button({
   label,
@@ -63,13 +73,14 @@ export function Button({
   disabled,
   loading,
   icon,
+  trailing,
   fullWidth,
   style,
   accessibilityLabel,
   haptic,
 }: ButtonProps) {
   const isDisabled = disabled || loading;
-  const height = size === 'lg' ? 56 : 48;
+  const height = size === 'lg' ? 54 : 48;
   const lit = variant === 'primary' || variant === 'danger';
   const defaultHaptic = lit ? 'press' : 'tap';
 
@@ -81,7 +92,7 @@ export function Button({
       onPress={isDisabled ? undefined : onPress}
       disabled={isDisabled}
       haptic={isDisabled ? 'none' : (haptic ?? defaultHaptic)}
-      activeScale={0.96}
+      activeScale={0.965}
       style={[
         styles.base,
         {
@@ -94,7 +105,7 @@ export function Button({
         },
         // A glow on a disabled control reads as available, so drop it.
         lit && !isDisabled
-          ? glow(variant === 'danger' ? colors.danger : colors.accent, 0.45, 18)
+          ? glow(variant === 'danger' ? colors.warmFill : colors.accent, 0.4, 18)
           : variant === 'secondary'
             ? elevation.low
             : null,
@@ -104,18 +115,22 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={fg[variant]} />
       ) : (
-        <View style={styles.content}>
-          {icon}
-          <Text
-            style={{
-              fontFamily: fonts.heading,
-              fontSize: size === 'lg' ? fontSize.md : fontSize.base,
-              letterSpacing: -0.2,
-            }}
-            color={fg[variant]}
-          >
-            {label}
-          </Text>
+        <View style={[styles.content, trailing ? styles.spread : null]}>
+          <View style={styles.content}>
+            {icon}
+            <Text
+              numberOfLines={1}
+              style={{
+                fontFamily: lit ? fonts.bodySemi : fonts.bodyMedium,
+                fontSize: size === 'lg' ? fontSize.base : fontSize.sm,
+                letterSpacing: -0.1,
+              }}
+              color={fg[variant]}
+            >
+              {label}
+            </Text>
+          </View>
+          {trailing}
         </View>
       )}
     </PressableScale>
@@ -125,7 +140,7 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     borderRadius: radius.button,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -133,5 +148,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  spread: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
 });

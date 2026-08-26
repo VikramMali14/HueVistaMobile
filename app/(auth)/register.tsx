@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Button, Input, BackLink } from '../../src/components';
+import { Screen, Text, Button, Input, BackLink, PressableScale } from '../../src/components';
 import { colors, spacing } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { userMessage } from '../../src/api';
@@ -24,6 +24,7 @@ export default function Register() {
   const canSubmit = name.trim().length > 0 && email.trim().length > 0 && passwordOk && !busy;
 
   async function onSubmit() {
+    if (!canSubmit) return;
     setError(null);
     setBusy(true);
     try {
@@ -43,12 +44,23 @@ export default function Register() {
       <BackLink />
 
       <View style={styles.header}>
-        <Text variant="title">Create your account</Text>
-        <Text variant="bodySoft">Save your rooms, try shades and share looks.</Text>
+        <Text variant="display">A name, and a way back in.</Text>
+        <Text variant="bodySoft">
+          So your rooms, your boards and your shades are still here next time.
+        </Text>
       </View>
 
       <View style={styles.form}>
-        <Input label="Name" value={name} onChangeText={setName} placeholder="Your name" autoCapitalize="words" />
+        <Input
+          label="Full name"
+          value={name}
+          onChangeText={setName}
+          placeholder="Your name"
+          autoCapitalize="words"
+          autoComplete="name"
+          textContentType="name"
+          returnKeyType="next"
+        />
         <Input
           label="Email"
           value={email}
@@ -57,6 +69,8 @@ export default function Register() {
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="next"
         />
         <Input
           label="Password"
@@ -65,11 +79,15 @@ export default function Register() {
           placeholder="At least 8 characters"
           secureTextEntry
           hint="8+ characters, with a letter and a number."
+          autoComplete="new-password"
+          textContentType="newPassword"
+          returnKeyType="go"
+          onSubmitEditing={onSubmit}
           error={password.length > 0 && !passwordOk ? 'Use 8+ characters, a letter and a number.' : undefined}
         />
 
         {error ? (
-          <Text variant="body" color={colors.danger}>
+          <Text variant="caption" color={colors.dangerSoft}>
             {error}
           </Text>
         ) : null}
@@ -79,19 +97,24 @@ export default function Register() {
 
       <View style={styles.footer}>
         <Text variant="bodySoft">Already have an account? </Text>
-        <Pressable onPress={() => router.replace('/sign-in')} hitSlop={8}>
+        <PressableScale
+          onPress={() => router.replace('/sign-in')}
+          haptic="tap"
+          activeScale={0.95}
+          accessibilityRole="button"
+        >
           <Text variant="label" color={colors.accentSoft}>
             Sign in
           </Text>
-        </Pressable>
+        </PressableScale>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.xl, paddingTop: spacing.xl },
-  header: { gap: spacing.xs },
-  form: { gap: spacing.md },
+  content: { gap: spacing.xl, paddingTop: spacing.lg },
+  header: { gap: spacing.md },
+  form: { gap: spacing.lg },
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
 });

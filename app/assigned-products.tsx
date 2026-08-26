@@ -29,7 +29,7 @@ function ProductCard({ product }: { product: ShopProduct }) {
           </View>
         )}
         <View style={styles.productBody}>
-          <Text variant="heading" numberOfLines={2}>
+          <Text variant="subhead" numberOfLines={2}>
             {product.lineName ?? 'Product'}
           </Text>
           <Text variant="caption">

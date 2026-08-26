@@ -67,6 +67,22 @@ export const authApi = {
       .then((d) => messageSchema.parse(d).message);
   },
 
+  /**
+   * Finish the reset: the six digits from the e-mail plus the new password.
+   *
+   * The app had `forgotPassword` and nothing to follow it with, so the screen
+   * that sent the code was a dead end — it told the user a code was on its way
+   * and gave them nowhere to type it. Existing sessions are revoked, so the
+   * caller signs in again afterwards rather than being let straight through.
+   */
+  resetPassword(email: string, code: string, newPassword: string): Promise<string> {
+    return apiFetch('/auth/reset-password', {
+      method: 'POST',
+      json: { email: email.trim(), code: code.trim(), newPassword },
+      skipAuth: true,
+    }).then((d) => messageSchema.parse(d).message);
+  },
+
   /** Edit the account's own details. PATCH — only the named fields change. */
   updateProfile(body: { name?: string; phoneNumber?: string }): Promise<UserProfile> {
     return apiFetch('/auth/profile', { method: 'PATCH', json: body }).then((d) =>

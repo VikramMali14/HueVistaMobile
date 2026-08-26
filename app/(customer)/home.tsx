@@ -1,45 +1,67 @@
+import { useMemo } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   Screen,
   Text,
-  Serif,
   Card,
   StatusPill,
   AuthedImage,
-  AuraOrb,
   Reveal,
   PressableScale,
   SectionHeader,
+  Swatch,
 } from '../../src/components';
-import { colors, spacing, radius, alpha, fontSize } from '../../src/theme';
+import { colors, spacing, radius, hairline } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
 import { usePopularShades } from '../../src/shades/queries';
 import { summaryToShade, Shade } from '../../src/shades/types';
 import { useProjects } from '../../src/projects/queries';
-import { EntitlementCard } from '../../src/account';
-import { useMyEntitlement, useShadeCodeScheme } from '../../src/account/queries';
+import {
+  useMyEntitlement,
+  useShadeCodeScheme,
+  useAiCredits,
+  useMyRenders,
+} from '../../src/account/queries';
 import { shadeDisplay } from '../../src/shades/shadeCodes';
+import { expiryText } from '../../src/account';
+import { stepOfProject, STEP_INDEX, STEP_TOTAL } from '../../src/studio/roomStep';
+import type { ProjectSummary } from '../../src/api';
+
+/** "Good evening" reads oddly at 4pm; three bands is as far as a clock can honestly go. */
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function Home() {
   const router = useRouter();
   const { user } = useSession();
-  const firstName = user?.name?.split(' ')[0] ?? 'there';
+  const firstName = user?.name?.trim().split(' ')[0] ?? 'there';
 
   // How this shop wants colours labelled (its own codes; names hidden or not).
   const scheme = useShadeCodeScheme().data;
 
-  // The three most recently touched rooms — resuming beats starting over.
-  const recent = (useProjects().data ?? []).slice(0, 3);
+  const entitlement = useMyEntitlement().data;
+  const credits = useAiCredits().data;
+  const projectsQuery = useProjects();
+  const projects = projectsQuery.data;
+  const renders = useMyRenders().data ?? [];
 
   /**
-   * A shop-managed customer has an allowance worth leading with, so it becomes
-   * the screen's hero figure. A self-serve customer has none, and gets the
-   * headline alone rather than an orb reading "0 of 0".
+   * Rooms still being worked on lead; finished ones live in the Library. A room
+   * is "in progress" until its last board is spent, which is what `readOnly`
+   * marks — so this is the list of things the customer can still change.
    */
-  const entitlement = useMyEntitlement().data;
+  const inProgress = useMemo(
+    () => (projects ?? []).filter((p) => !p.readOnly).slice(0, 6),
+    [projects],
+  );
+  const latestRender = renders[0];
 
   // Live popular shades, with the local sample as a first-load / offline fallback.
   const popularQuery = usePopularShades(10);
@@ -49,93 +71,150 @@ export default function Home() {
   const usingSample = livePopular.length === 0;
   const popular = usingSample ? SAMPLE_SHADES.slice(0, 8) : livePopular.slice(0, 10);
 
+  /**
+   * Nothing to work with: no shop allowance and nothing bought. This is a
+   * different screen, not a smaller one — the job is to explain the two ways in,
+   * not to show an empty shelf where the rooms would be.
+   */
+  const hasNothing = !entitlement && (projects?.length ?? 0) === 0;
+  const expiry = expiryText(entitlement?.accessExpiresAt);
+  const outOfProjects = (entitlement?.projectsRemaining ?? 0) <= 0 && !!entitlement;
+
   return (
     <Screen scroll contentStyle={styles.content}>
       <Reveal>
-        <Text variant="bodySoft">Hi {firstName}</Text>
-        <Text variant="display" style={styles.greeting}>
-          What are we <Serif size={fontSize.display}>painting</Serif> today?
-        </Text>
+        <View style={styles.head}>
+          {entitlement?.customerName || expiry ? (
+            <Text variant="eyebrow">
+              {[entitlement?.expired ? 'Access ended' : expiry ? `Access ends ${expiry}` : null]
+                .filter(Boolean)
+                .join(' · ') || 'Your account'}
+            </Text>
+          ) : (
+            <Text variant="eyebrow">{hasNothing ? 'No shop linked' : 'Your account'}</Text>
+          )}
+          <Text variant="display">
+            {greeting()}, {firstName}.
+          </Text>
+        </View>
       </Reveal>
 
-      {entitlement ? (
-        <Reveal index={1} style={styles.orbWrap}>
-          <AuraOrb
-            size={200}
-            progress={
-              entitlement.projectAllowance > 0
-                ? entitlement.projectsRemaining / entitlement.projectAllowance
-                : 0
-            }
-            value={entitlement.projectsRemaining}
-            label="Projects left"
-            caption={`of ${entitlement.projectAllowance} on your code`}
-            color={entitlement.expired ? colors.danger : colors.accent}
-          />
+      {/* Two numbers, and only when either means something. A pair of zeroes
+          under a greeting is a worse welcome than no numbers at all. */}
+      {entitlement || (credits?.balance ?? 0) > 0 ? (
+        <Reveal index={1}>
+          <View style={styles.stats}>
+            <Stat
+              value={entitlement ? entitlement.projectsRemaining : '—'}
+              label="Rooms left"
+              muted={outOfProjects}
+              onPress={() => router.push('/credits')}
+            />
+            <Stat
+              value={credits?.balance ?? 0}
+              label="AI images"
+              muted={(credits?.balance ?? 0) === 0}
+              onPress={() => router.push('/credits')}
+            />
+          </View>
         </Reveal>
       ) : null}
 
-      {/* Primary CTA — the core loop starts here. */}
+      {/* The one lit card on the screen. Which offer it makes depends on
+          whether they can actually start a room right now. */}
       <Reveal index={2}>
-        <PressableScale onPress={() => router.push('/new-project')} haptic="press" activeScale={0.975}>
-          <Card accent={colors.accent} style={styles.cta}>
-            <View style={styles.ctaIcon}>
-              <Ionicons name="sparkles" size={22} color={colors.accentSoft} />
-            </View>
+        {hasNothing || outOfProjects || entitlement?.expired ? (
+          <Card
+            tone="feature"
+            onPress={() => router.push(entitlement ? '/credits' : '/redeem-code')}
+            style={styles.cta}
+          >
             <View style={styles.ctaText}>
-              <Text variant="heading">Visualize a room</Text>
-              <Text variant="bodySoft">Take a photo and try real shades on your walls.</Text>
+              <Text variant="heading">
+                {entitlement ? 'Get another room' : 'Redeem a shop code'}
+              </Text>
+              <Text variant="caption">
+                {entitlement
+                  ? entitlement.expired
+                    ? 'Your access window has closed'
+                    : `All ${entitlement.projectAllowance} rooms on your code are used`
+                  : 'The six characters from the counter'}
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.fgMute} />
-          </Card>
-        </PressableScale>
-      </Reveal>
-
-      {/* What the shop assigned: access window, and the ask when it runs out.
-          The orb above already carries the count, so this sits under the CTA. */}
-      <Reveal index={3}>
-        <EntitlementCard />
-      </Reveal>
-
-      {/* Recent projects — resume where the last visit left off. */}
-      <Reveal index={4} style={styles.section}>
-        <SectionHeader
-          title="Recent projects"
-          actionLabel={recent.length > 0 ? 'See all' : undefined}
-          onAction={recent.length > 0 ? () => router.push('/projects') : undefined}
-        />
-        {recent.length === 0 ? (
-          <Card>
-            <Text variant="bodySoft">Your saved rooms will show up here once you create one.</Text>
+            <View style={styles.ctaGo}>
+              <Ionicons name="arrow-forward" size={19} color="#f7f5ff" />
+            </View>
           </Card>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-            {recent.map((p) => (
-              <PressableScale
-                key={p.id}
-                onPress={() => router.push(`/project/${p.id}`)}
-                haptic="tap"
-                activeScale={0.95}
-                style={styles.recentCard}
-              >
-                {/* Masks align to the cleaned photo, so that is the truer thumbnail. */}
-                <AuthedImage
-                  url={p.cleanedImageUrl ?? p.imageUrl}
-                  style={styles.recentThumb}
-                  contentFit="cover"
-                  transition={150}
-                />
-                <Text variant="label" numberOfLines={1}>
-                  {p.name ?? 'Untitled room'}
-                </Text>
-                {p.readOnly ? <StatusPill label="View only" tone="expired" /> : null}
-              </PressableScale>
-            ))}
-          </ScrollView>
+          <Card tone="feature" onPress={() => router.push('/studio/new')} style={styles.cta}>
+            <View style={styles.ctaText}>
+              <Text variant="heading">Start a room</Text>
+              <Text variant="caption">Photograph a wall, pick a shade</Text>
+            </View>
+            <View style={styles.ctaGo}>
+              <Ionicons name="arrow-forward" size={19} color="#f7f5ff" />
+            </View>
+          </Card>
         )}
       </Reveal>
 
-      {/* Popular shades strip — taps into the visualizer. */}
+      {hasNothing ? (
+        <Reveal index={3}>
+          <Card onPress={() => router.push('/buy')} style={styles.buyRow}>
+            <View style={styles.ctaText}>
+              <Text variant="subhead">Buy a room</Text>
+              <Text variant="caption">One room, one colour board</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.fgMute} />
+          </Card>
+        </Reveal>
+      ) : null}
+
+      {inProgress.length > 0 ? (
+        <Reveal index={3} style={styles.section}>
+          <SectionHeader
+            title="Rooms in progress"
+            trailing={<Text variant="code">{inProgress.length}</Text>}
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.strip}
+          >
+            {inProgress.map((p) => (
+              <RoomCard key={p.id} project={p} onPress={() => router.push(`/studio/${p.id}`)} />
+            ))}
+          </ScrollView>
+        </Reveal>
+      ) : null}
+
+      {latestRender?.imageUrl ? (
+        <Reveal index={4} style={styles.section}>
+          <SectionHeader title="Your latest AI image" />
+          <Card
+            padded={false}
+            onPress={() => router.push('/library')}
+            style={styles.renderRow}
+          >
+            <AuthedImage
+              url={latestRender.imageUrl}
+              style={styles.renderThumb}
+              contentFit="cover"
+              transition={150}
+            />
+            <View style={styles.renderText}>
+              <Text variant="subhead" numberOfLines={1}>
+                {latestRender.projectName ?? 'Your room'}
+              </Text>
+              <Text variant="caption" numberOfLines={1}>
+                {latestRender.comboTitle ?? latestRender.shades[0]?.shadeName ?? 'AI preview'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.fgMute} style={styles.renderGo} />
+          </Card>
+        </Reveal>
+      ) : null}
+
       <Reveal index={5} style={styles.section}>
         <SectionHeader
           title="Popular shades"
@@ -143,11 +222,16 @@ export default function Home() {
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
           {popular.map((shade) => (
-            <PressableScale
+            <Swatch
               key={`${shade.brandSlug ?? ''}-${shade.code}`}
+              hex={shade.hex}
+              code={shadeDisplay(scheme, { code: shade.code, name: shade.name }).label}
+              size="lg"
+              showScience
+              style={styles.popularChip}
               onPress={() =>
                 router.push({
-                  pathname: '/studio',
+                  pathname: '/shade/[code]',
                   params: {
                     code: shade.code,
                     name: shade.name,
@@ -158,24 +242,7 @@ export default function Home() {
                   },
                 })
               }
-              haptic="select"
-              activeScale={0.93}
-              style={styles.chip}
-            >
-              <View
-                style={[
-                  styles.swatch,
-                  {
-                    backgroundColor: shade.hex,
-                    shadowColor: shade.hex,
-                    borderColor: alpha(shade.hex, 0.5),
-                  },
-                ]}
-              />
-              <Text variant="caption" numberOfLines={1} style={styles.chipLabel}>
-                {shadeDisplay(scheme, { code: shade.code, name: shade.name }).label}
-              </Text>
-            </PressableScale>
+            />
           ))}
         </ScrollView>
       </Reveal>
@@ -183,42 +250,113 @@ export default function Home() {
   );
 }
 
+/** One of the two figures under the greeting. */
+function Stat({
+  value,
+  label,
+  muted,
+  onPress,
+}: {
+  value: number | string;
+  label: string;
+  muted?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      haptic="tap"
+      activeScale={0.97}
+      accessibilityRole="button"
+      accessibilityLabel={`${value} ${label}`}
+      style={styles.stat}
+    >
+      <Text variant="figure" color={muted ? colors.fgMute : colors.fg}>
+        {value}
+      </Text>
+      <Text variant="eyebrow">{label}</Text>
+    </PressableScale>
+  );
+}
+
+/** A room in progress, with how far through the pipeline it is. */
+function RoomCard({ project, onPress }: { project: ProjectSummary; onPress: () => void }) {
+  const step = stepOfProject(project);
+  return (
+    <PressableScale
+      onPress={onPress}
+      haptic="tap"
+      activeScale={0.96}
+      accessibilityRole="button"
+      accessibilityLabel={`${project.name ?? 'Untitled room'}, step ${STEP_INDEX[step] + 1} of ${STEP_TOTAL}`}
+      style={styles.roomCard}
+    >
+      <AuthedImage
+        url={project.cleanedImageUrl ?? project.imageUrl}
+        style={styles.roomThumb}
+        contentFit="cover"
+        transition={150}
+      />
+      <View style={styles.roomBody}>
+        <Text variant="subhead" numberOfLines={1}>
+          {project.name ?? 'Untitled room'}
+        </Text>
+        <Text variant="caption" color={colors.accentSoft}>
+          Step {STEP_INDEX[step] + 1} of {STEP_TOTAL}
+        </Text>
+      </View>
+    </PressableScale>
+  );
+}
+
 const styles = StyleSheet.create({
-  content: { gap: spacing.xl, paddingTop: spacing.xl },
-  greeting: { marginTop: spacing.xs },
-  orbWrap: { alignItems: 'center', paddingVertical: spacing.sm },
+  content: { gap: spacing.xl, paddingTop: spacing.lg },
+  head: { gap: spacing.sm },
+  stats: { flexDirection: 'row', gap: spacing.sm },
+  stat: {
+    flex: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: radius.cardTight,
+    borderWidth: hairline,
+    borderColor: colors.glassEdgeSoft,
+    backgroundColor: colors.glass,
+  },
   cta: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  ctaIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: radius.button,
-    backgroundColor: colors.accentGhost,
+  ctaText: { flex: 1, gap: 3 },
+  ctaGo: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaText: { flex: 1, gap: 2 },
+  buyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   section: { gap: spacing.md },
   strip: { gap: spacing.md, paddingVertical: spacing.xs },
-  chip: { width: 88, gap: spacing.xs },
-  recentCard: { width: 156, gap: spacing.xs },
-  recentThumb: {
-    width: 156,
-    aspectRatio: 4 / 3,
-    borderRadius: radius.card,
-    backgroundColor: colors.surface2,
-    borderWidth: 1,
-    borderColor: colors.glassEdge,
-    marginBottom: spacing.xs,
-  },
-  swatch: {
-    width: 88,
-    height: 68,
+  roomCard: {
+    width: 154,
     borderRadius: radius.cardTight,
-    borderWidth: 1,
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 5,
+    borderWidth: hairline,
+    borderColor: colors.glassEdgeSoft,
+    backgroundColor: colors.glass,
+    overflow: 'hidden',
   },
-  chipLabel: { textAlign: 'center' },
+  roomThumb: {
+    width: '100%',
+    height: 100,
+    backgroundColor: colors.surface2,
+  },
+  roomBody: { padding: spacing.md, gap: 3 },
+  renderRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.sm, gap: spacing.md },
+  renderThumb: {
+    width: 100,
+    height: 64,
+    borderRadius: radius.chip,
+    backgroundColor: colors.surface2,
+  },
+  renderText: { flex: 1, gap: 3 },
+  renderGo: { marginRight: spacing.sm },
+  popularChip: { width: 92 },
 });

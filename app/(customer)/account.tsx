@@ -1,60 +1,106 @@
 import { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useQueryClient } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
-import { Screen, Serif, Text, Card, Button, StatusPill, Input, SheetModal } from '../../src/components';
-import { colors, spacing, radius, fontSize } from '../../src/theme';
+import {
+  Screen,
+  Text,
+  Card,
+  Button,
+  Input,
+  CodeInput,
+  SheetModal,
+  SettingsRow,
+  SettingsGroup,
+  StatusPill,
+  Reveal,
+} from '../../src/components';
+import { colors, spacing, radius, useReducedMotion } from '../../src/theme';
 import { useSession } from '../../src/auth';
-import { API_ORIGIN, accessCodesApi, ApiError, AccessCodeResponse } from '../../src/api';
-import { EntitlementCard } from '../../src/account';
-import { AccountActions } from '../../src/account/AccountPanel';
-import { useAssignedProducts, useShadeCodeScheme } from '../../src/account/queries';
-import { useMyJobsAsCustomer } from '../../src/account/roleQueries';
-import { jobLabel, jobTone } from '../(painter)/jobs';
+import {
+  API_ORIGIN,
+  accessCodesApi,
+  authApi,
+  ApiError,
+  userMessage,
+  AccessCodeResponse,
+} from '../../src/api';
+import {
+  useAssignedProducts,
+  useMyEntitlement,
+  useMyProfile,
+  useAiCredits,
+} from '../../src/account/queries';
+import { expiryText } from '../../src/account';
+import { useHapticsPreference } from '../../src/haptics/preference';
+import { haptics } from '../../src/haptics';
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text variant="label">{label}</Text>
-      <Text variant="body" numberOfLines={1} style={styles.rowValue}>
-        {value}
-      </Text>
-    </View>
-  );
-}
+const CODE_LENGTH = 6;
 
+/**
+ * You, and everything that is true about your account.
+ *
+ * Laid out as a settings list rather than the column of seven cards it used to
+ * be, each with its own full-width button — which gave "Sign out" and "Haptics"
+ * identical weight and made the destructive row the same size as the rest.
+ */
 export default function Account() {
-  const { user, role } = useSession();
+  const { user, signOut } = useSession();
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const assigned = useAssignedProducts();
-  const scheme = useShadeCodeScheme().data;
-  const shopName = assigned.data?.shopName ?? null;
-  const jobs = useMyJobsAsCustomer();
+  const profile = useMyProfile().data;
+  const entitlement = useMyEntitlement().data;
+  const credits = useAiCredits().data;
+  const assigned = useAssignedProducts().data;
+  const shopName = assigned?.shopName ?? null;
 
-  // Link a paint shop (redeem an access code).
+  const [hapticsOn, setHapticsOn] = useHapticsPreference();
+  const reducedMotion = useReducedMotion();
+
+  const [busy, setBusy] = useState(false);
+
+  // Link a paint shop (redeem an access code onto an existing account).
   const [linkOpen, setLinkOpen] = useState(false);
   const [code, setCode] = useState('');
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linked, setLinked] = useState<AccessCodeResponse | null>(null);
 
+  // Change password.
+  const [pwOpen, setPwOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwDone, setPwDone] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
+
+  /**
+   * An account provisioned from a shop code has a synthetic address and no
+   * password, so offering "change password" would open a form that cannot
+   * succeed. The same is true of the verify prompt.
+   */
+  const passwordless = profile?.provider != null && profile.provider !== 'LOCAL';
+  const realEmail = profile?.email && !profile.email.endsWith('.local') ? profile.email : null;
+  const expiry = expiryText(entitlement?.accessExpiresAt);
+
   async function redeem() {
+    if (code.length < CODE_LENGTH) return;
     setLinking(true);
     setLinkError(null);
     try {
       setLinked(await accessCodesApi.redeem(code));
-      // The code carries the projects, the brands and the products — every one of
-      // those reads is now stale.
+      haptics.success();
+      // The code carries the projects, the brands and the products — every one
+      // of those reads is now stale.
       queryClient.invalidateQueries({ queryKey: ['account'] });
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 404 || err.status === 400)) {
-        setLinkError('That code isn’t valid, or it has expired.');
+      haptics.error();
+      if (err instanceof ApiError && (err.status === 404 || err.status === 400 || err.status === 410)) {
+        setLinkError('That code isn’t valid, or it has already been used.');
       } else {
-        setLinkError(err instanceof ApiError ? err.message : 'Couldn’t link the shop. Please try again.');
+        setLinkError(userMessage(err));
       }
     } finally {
       setLinking(false);
@@ -68,147 +114,287 @@ export default function Account() {
     setLinked(null);
   }
 
+  async function changePassword() {
+    setPwBusy(true);
+    setPwError(null);
+    try {
+      await authApi.changePassword(current, next);
+      haptics.success();
+      setPwDone(true);
+      setCurrent('');
+      setNext('');
+    } catch (err) {
+      haptics.error();
+      setPwError(userMessage(err));
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  /**
+   * Deleting is irreversible and takes the rooms with it, so it asks first and
+   * names what goes — a second tap on a red row is not consent.
+   */
+  function confirmDelete() {
+    Alert.alert(
+      'Delete your account?',
+      'Your rooms, boards and saved colours are removed for good. Boards you already downloaded stay on your phone. This cannot be undone.',
+      [
+        { text: 'Keep my account', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await authApi.deleteAccount();
+              await signOut();
+            } catch (err) {
+              Alert.alert('Could not delete', userMessage(err));
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   const initial = (user?.name ?? user?.email ?? '?').charAt(0).toUpperCase();
 
   return (
     <Screen scroll contentStyle={styles.content}>
-      <Text variant="display">
-        <Serif size={fontSize.display}>Account</Serif>
+      <Reveal>
+        <View style={styles.head}>
+          <Text variant="eyebrow">Account</Text>
+          <View style={styles.identity}>
+            <View style={styles.avatar}>
+              <Text variant="heading">{initial}</Text>
+            </View>
+            <View style={styles.identityText}>
+              <Text variant="title" numberOfLines={1}>
+                {user?.name ?? 'Your account'}
+              </Text>
+              {realEmail ? (
+                <Text variant="caption" numberOfLines={1}>
+                  {realEmail}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Reveal>
+
+      {/* The unverified e-mail is the one thing here that will refuse a room
+          later, so it leads rather than sitting among the settings. */}
+      {profile && !passwordless && !profile.emailVerified ? (
+        <Reveal index={1}>
+          <Card tone="feature" onPress={() => router.push('/verify')} style={styles.verify}>
+            <View style={styles.verifyText}>
+              <Text variant="subhead">Verify your email</Text>
+              <Text variant="caption">
+                Starting a room asks for a verified address. It takes one code.
+              </Text>
+            </View>
+            <StatusPill label="Incomplete" tone="progress" />
+          </Card>
+        </Reveal>
+      ) : null}
+
+      <Reveal index={2}>
+        <SettingsGroup>
+          <SettingsRow
+            icon="cube-outline"
+            label="Rooms & AI images"
+            hint={
+              entitlement
+                ? `${entitlement.projectsRemaining} of ${entitlement.projectAllowance} rooms left${
+                    expiry && !entitlement.expired ? ` · access ends ${expiry}` : ''
+                  }`
+                : 'What you have, and how to get more'
+            }
+            value={credits ? `${credits.balance}` : undefined}
+            onPress={() => router.push('/credits')}
+          />
+          <SettingsRow
+            icon="storefront-outline"
+            label={shopName ? 'Your shop' : 'Link a paint shop'}
+            hint={shopName ?? 'Redeem a code from the counter'}
+            onPress={shopName ? undefined : () => setLinkOpen(true)}
+          />
+          {shopName ? (
+            <SettingsRow
+              icon="color-fill-outline"
+              label="Your products"
+              hint="The paint your shop picked for you"
+              onPress={() => router.push('/assigned-products')}
+            />
+          ) : null}
+          <SettingsRow
+            icon="albums-outline"
+            label="My library"
+            hint="Rooms, AI images and saved shades"
+            onPress={() => router.push('/library')}
+          />
+        </SettingsGroup>
+      </Reveal>
+
+      <Reveal index={3}>
+        <SettingsGroup>
+          <SettingsRow
+            icon="phone-portrait-outline"
+            label="Vibration"
+            hint="A small buzz when you pick a shade or finish a step"
+            toggle={{
+              value: hapticsOn,
+              onChange: (on) => {
+                setHapticsOn(on);
+                // Fire once on the way ON so the switch demonstrates what it
+                // just enabled. Turning it off is silent, which is the point.
+                if (on) haptics.press();
+              },
+            }}
+          />
+          <SettingsRow
+            icon="contrast-outline"
+            label="Appearance"
+            hint={
+              reducedMotion
+                ? 'Dark, and following your phone’s reduced-motion setting'
+                : 'Dark, so the wall stays the brightest thing on screen'
+            }
+          />
+          <SettingsRow
+            icon="chatbubble-ellipses-outline"
+            label="Help & support"
+            hint="Ask a question — a person takes over if you need one"
+            onPress={() => router.push('/support')}
+          />
+        </SettingsGroup>
+      </Reveal>
+
+      <Reveal index={4}>
+        <SettingsGroup>
+          {!passwordless ? (
+            <SettingsRow icon="key-outline" label="Change password" onPress={() => setPwOpen(true)} />
+          ) : null}
+          <SettingsRow
+            icon="log-out-outline"
+            label={busy ? 'Signing out…' : 'Sign out'}
+            onPress={() => {
+              if (busy) return;
+              setBusy(true);
+              signOut().finally(() => setBusy(false));
+            }}
+          />
+          <SettingsRow
+            icon="trash-outline"
+            label="Delete account"
+            tone="danger"
+            hint="Removes your rooms and boards for good"
+            onPress={confirmDelete}
+          />
+        </SettingsGroup>
+      </Reveal>
+
+      <Text variant="caption" center style={styles.build}>
+        HueVista {Constants.expoConfig?.version ?? ''} · {API_ORIGIN}
       </Text>
-
-      <Card>
-        <View style={styles.profile}>
-          <View style={styles.avatar}>
-            <Text variant="display" color={colors.accentSoft} style={styles.avatarText}>
-              {initial}
-            </Text>
-          </View>
-          <View style={styles.profileMeta}>
-            <Text variant="heading">{user?.name ?? 'Your account'}</Text>
-            {/* An account provisioned from a shop code has no real address — the
-                shop it belongs to is the identity worth showing instead. */}
-            {user?.email ? (
-              <Text variant="bodySoft">{user.email}</Text>
-            ) : shopName ? (
-              <Text variant="bodySoft">Customer of {shopName}</Text>
-            ) : null}
-          </View>
-          {role ? <StatusPill label={role} tone="done" /> : null}
-        </View>
-      </Card>
-
-      <EntitlementCard />
-
-      {assigned.data ? (
-        <Card onPress={() => router.push('/assigned-products')}>
-          <View style={styles.linkRow}>
-            <View style={styles.linkIcon}>
-              <Ionicons name="pricetags-outline" size={20} color={colors.accentSoft} />
-            </View>
-            <View style={styles.linkText}>
-              <Text variant="heading">Your products</Text>
-              <Text variant="bodySoft">
-                {assigned.data.products.length > 0
-                  ? `${assigned.data.products.length} product${assigned.data.products.length === 1 ? '' : 's'} picked for you${shopName ? ` by ${shopName}` : ''}.`
-                  : `The paint companies ${shopName ?? 'your shop'} opened for you.`}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.fgMute} />
-          </View>
-        </Card>
-      ) : null}
-
-      <Card onPress={() => setLinkOpen(true)}>
-        <View style={styles.linkRow}>
-          <View style={styles.linkIcon}>
-            <Ionicons name="storefront-outline" size={20} color={colors.accentSoft} />
-          </View>
-          <View style={styles.linkText}>
-            <Text variant="heading">{shopName ? 'Link another paint shop' : 'Link a paint shop'}</Text>
-            <Text variant="bodySoft">Enter a shop code to connect with your retailer.</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.fgMute} />
-        </View>
-      </Card>
-
-      <Card>
-        {user?.email ? <Row label="Email" value={user.email} /> : null}
-        {user?.email ? <View style={styles.divider} /> : null}
-        {shopName ? <Row label="Shop" value={shopName} /> : null}
-        {shopName ? <View style={styles.divider} /> : null}
-        {/* A shop running its own codes usually hides paint names too; saying so
-            here stops "why can't I see the colour names?" reaching the counter. */}
-        {scheme?.showNames === false ? <Row label="Paint names" value="Hidden by your shop" /> : null}
-        {scheme?.showNames === false ? <View style={styles.divider} /> : null}
-        <Row label="Role" value={role ?? '—'} />
-        <View style={styles.divider} />
-        <Row label="Backend" value={API_ORIGIN} />
-        <View style={styles.divider} />
-        <Row label="App version" value={String(Constants.expoConfig?.version ?? '0.1.0')} />
-      </Card>
-
-      {/* Jobs a shop has scheduled against this customer's rooms. Only rendered
-          when there are any — most customers never have one. */}
-      {(jobs.data ?? []).length > 0 ? (
-        <Card>
-          <Text variant="heading">Your paint jobs</Text>
-          {(jobs.data ?? []).map((j) => (
-            <View key={j.id} style={styles.jobRow}>
-              <Text variant="body" numberOfLines={1} style={styles.jobName}>
-                {j.projectName ?? 'Paint job'}
-              </Text>
-              <StatusPill label={jobLabel(j.status)} tone={jobTone(j.status)} />
-            </View>
-          ))}
-        </Card>
-      ) : null}
-
-      {/* Verification, password, support, sign out and deletion — shared with
-          every other role so none of them can drift apart. */}
-      <AccountActions />
 
       <SheetModal visible={linkOpen} onClose={closeLink} title="Link a paint shop">
         {linked ? (
-          <View style={styles.sheetBody}>
-            <Card>
-              <Text variant="label" color={colors.success}>
-                Linked
-              </Text>
-              <Text variant="title" style={{ marginTop: spacing.xs }}>
-                {linked.organizationName ?? 'Your shop'}
-              </Text>
-              {linked.code ? (
-                <Text variant="mono" color={colors.fgSoft}>
-                  {linked.code}
-                </Text>
-              ) : null}
-            </Card>
-            <Button label="Done" size="lg" fullWidth onPress={closeLink} />
+          <View style={styles.sheet}>
+            <Text variant="subhead" color={colors.success}>
+              Linked to {linked.organizationName ?? 'your shop'}.
+            </Text>
+            <Text variant="bodySoft">
+              {linked.projectsRemaining ?? linked.projectQuota ?? 0} room
+              {(linked.projectsRemaining ?? linked.projectQuota ?? 0) === 1 ? '' : 's'} are now on your
+              account.
+            </Text>
+            <Button label="Done" fullWidth onPress={closeLink} />
           </View>
         ) : (
-          <View style={styles.sheetBody}>
-            <Input
-              label="Shop code"
+          <View style={styles.sheet}>
+            <Text variant="bodySoft">
+              Six characters from the counter. It adds the rooms your shop assigned and opens the paint
+              companies they stock.
+            </Text>
+            <CodeInput
               value={code}
-              onChangeText={(t) => setCode(t.toUpperCase())}
-              placeholder="HV-XXXXXX"
-              autoCapitalize="characters"
-              autoCorrect={false}
-              mono
-              maxLength={10}
+              onChangeText={(nextCode) => {
+                setCode(nextCode);
+                setLinkError(null);
+              }}
+              length={CODE_LENGTH}
+              onSubmitEditing={redeem}
+              invalid={!!linkError}
+              accessibilityLabel="Shop access code"
             />
             {linkError ? (
-              <Text variant="body" color={colors.danger}>
+              <Text variant="caption" color={colors.dangerSoft}>
                 {linkError}
               </Text>
             ) : null}
             <Button
-              label="Link shop"
-              size="lg"
+              label="Link my shop"
               fullWidth
               loading={linking}
-              disabled={code.trim().length < 4 || linking}
+              disabled={code.length < CODE_LENGTH || linking}
               onPress={redeem}
+            />
+          </View>
+        )}
+      </SheetModal>
+
+      <SheetModal
+        visible={pwOpen}
+        onClose={() => {
+          setPwOpen(false);
+          setPwDone(false);
+          setPwError(null);
+        }}
+        title="Change password"
+      >
+        {pwDone ? (
+          <View style={styles.sheet}>
+            <Text variant="subhead" color={colors.success}>
+              Password changed.
+            </Text>
+            <Text variant="bodySoft">Other devices have been signed out.</Text>
+            <Button
+              label="Done"
+              fullWidth
+              onPress={() => {
+                setPwOpen(false);
+                setPwDone(false);
+              }}
+            />
+          </View>
+        ) : (
+          <View style={styles.sheet}>
+            <Input
+              label="Current password"
+              value={current}
+              onChangeText={setCurrent}
+              secureTextEntry
+              autoComplete="current-password"
+            />
+            <Input
+              label="New password"
+              value={next}
+              onChangeText={setNext}
+              secureTextEntry
+              autoComplete="new-password"
+              hint="8+ characters, with a letter and a number."
+              error={pwError ?? undefined}
+            />
+            <Button
+              label="Change password"
+              fullWidth
+              loading={pwBusy}
+              disabled={current.length === 0 || next.length < 8 || pwBusy}
+              onPress={changePassword}
             />
           </View>
         )}
@@ -218,38 +404,20 @@ export default function Account() {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.lg, paddingTop: spacing.xl },
-  profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  content: { gap: spacing.lg, paddingTop: spacing.lg },
+  head: { gap: spacing.md },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   avatar: {
-    width: 56,
-    height: 56,
+    width: 52,
+    height: 52,
     borderRadius: radius.pill,
     backgroundColor: colors.accentGhost,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontSize: 24, lineHeight: 30 },
-  profileMeta: { flex: 1, gap: 2 },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  linkIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.button,
-    backgroundColor: colors.accentGhost,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  linkText: { flex: 1, gap: 2 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, gap: spacing.md },
-  rowValue: { flexShrink: 1, textAlign: 'right' },
-  divider: { height: 1, backgroundColor: colors.rule },
-  sheetBody: { gap: spacing.md },
-  jobRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  jobName: { flexShrink: 1 },
+  identityText: { flex: 1, gap: 2 },
+  verify: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  verifyText: { flex: 1, gap: 3 },
+  sheet: { gap: spacing.lg },
+  build: { marginTop: spacing.sm },
 });
