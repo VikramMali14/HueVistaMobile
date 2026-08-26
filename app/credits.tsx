@@ -101,7 +101,7 @@ export default function Credits() {
           /* The shop assigned and paid for these rooms out of its own quota, so
              the honest button is "ask them", not "pay us again". */
           <Card>
-            <Text variant="subhead">Ask {entitlement?.retailerOrgId ? 'your shop' : 'your shop'} for another room</Text>
+            <Text variant="subhead">Ask your shop for another room</Text>
             <Text variant="bodySoft" style={styles.cardBody}>
               They can add one to your code from the counter. You&apos;ll see it here as soon as they do.
             </Text>

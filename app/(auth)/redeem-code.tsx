@@ -46,13 +46,13 @@ export default function RedeemCode() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<RedeemAccountResponse | null>(null);
 
-  async function redeem() {
-    if (code.length < CODE_LENGTH || busy) return;
+  async function redeem(value: string = code) {
+    if (value.length < CODE_LENGTH || busy) return;
     setBusy(true);
     setRefusal(null);
     setError(null);
     try {
-      setDone(await accessCodesApi.redeemAccount(code));
+      setDone(await accessCodesApi.redeemAccount(value));
       haptics.success();
       // The session is deliberately NOT adopted here: doing so flips the auth
       // gate immediately and this screen is replaced by the customer tabs before
@@ -154,7 +154,7 @@ export default function RedeemCode() {
             setError(null);
           }}
           length={CODE_LENGTH}
-          onSubmitEditing={redeem}
+          onComplete={redeem}
           autoFocus
           accessibilityLabel="Shop access code"
         />
@@ -169,7 +169,7 @@ export default function RedeemCode() {
           fullWidth
           loading={busy}
           disabled={code.length < CODE_LENGTH || busy}
-          onPress={redeem}
+          onPress={() => redeem()}
         />
       </View>
 

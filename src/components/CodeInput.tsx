@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, TextInput, View, ViewStyle } from 'react-native';
 import { colors, radius, spacing, fonts, fontSize, hairline, alpha } from '../theme';
 import { Text } from './Text';
+import { codeEntry, type CodeMode } from './codeEntry';
 import { haptics } from '../haptics';
 
 export interface CodeInputProps {
@@ -10,10 +11,19 @@ export interface CodeInputProps {
   /** How many characters the code has. Six everywhere in this product. */
   length?: number;
   /** Letters and digits (a shop code) or digits only (an emailed code). */
-  mode?: 'alphanumeric' | 'numeric';
+  mode?: CodeMode;
   /** Paints every box red — a code the server refused. */
   invalid?: boolean;
-  onSubmitEditing?: () => void;
+  /**
+   * Fired once the last character lands, with the finished code.
+   *
+   * It carries the value on purpose. The obvious spelling — a bare
+   * `onSubmitEditing()` that lets the handler read the parent's state — fires
+   * in the same tick as `onChangeText`, before React has committed it, so the
+   * handler sees five characters of a six-character code and every guard of the
+   * form `if (code.length < 6) return` silently swallows the auto-submit.
+   */
+  onComplete?: (code: string) => void;
   autoFocus?: boolean;
   style?: ViewStyle;
   accessibilityLabel?: string;
@@ -40,7 +50,7 @@ export function CodeInput({
   length = 6,
   mode = 'alphanumeric',
   invalid,
-  onSubmitEditing,
+  onComplete,
   autoFocus,
   style,
   accessibilityLabel = 'Code',
@@ -48,19 +58,13 @@ export function CodeInput({
   const input = useRef<TextInput>(null);
   const [focused, setFocused] = useState(false);
 
-  const clean = (raw: string) => {
-    const stripped =
-      mode === 'numeric' ? raw.replace(/[^0-9]/g, '') : raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    return stripped.slice(0, length);
-  };
-
   const handle = (raw: string) => {
-    const next = clean(raw);
+    const { value: next, complete } = codeEntry(raw, mode, length);
     // One detent per character, and only when a character actually lands —
     // deleting should not feel like typing.
     if (next.length > value.length) haptics.select();
     onChangeText(next);
-    if (next.length === length) onSubmitEditing?.();
+    if (complete) onComplete?.(next);
   };
 
   const boxes = Array.from({ length }, (_, i) => {
@@ -104,7 +108,9 @@ export function CodeInput({
         autoComplete="one-time-code"
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        onSubmitEditing={onSubmitEditing}
+        onSubmitEditing={() => {
+          if (value.length === length) onComplete?.(value);
+        }}
         accessibilityLabel={accessibilityLabel}
         style={styles.hidden}
         caretHidden

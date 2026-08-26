@@ -85,12 +85,12 @@ export default function Account() {
   const realEmail = profile?.email && !profile.email.endsWith('.local') ? profile.email : null;
   const expiry = expiryText(entitlement?.accessExpiresAt);
 
-  async function redeem() {
-    if (code.length < CODE_LENGTH) return;
+  async function redeem(value: string = code) {
+    if (value.length < CODE_LENGTH || linking) return;
     setLinking(true);
     setLinkError(null);
     try {
-      setLinked(await accessCodesApi.redeem(code));
+      setLinked(await accessCodesApi.redeem(value));
       haptics.success();
       // The code carries the projects, the brands and the products — every one
       // of those reads is now stale.
@@ -327,7 +327,7 @@ export default function Account() {
                 setLinkError(null);
               }}
               length={CODE_LENGTH}
-              onSubmitEditing={redeem}
+              onComplete={redeem}
               invalid={!!linkError}
               accessibilityLabel="Shop access code"
             />
@@ -341,7 +341,7 @@ export default function Account() {
               fullWidth
               loading={linking}
               disabled={code.length < CODE_LENGTH || linking}
-              onPress={redeem}
+              onPress={() => redeem()}
             />
           </View>
         )}

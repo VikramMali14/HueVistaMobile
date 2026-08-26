@@ -231,6 +231,30 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   }
 
   /**
+   * Hand over to the board.
+   *
+   * The colours are autosaved one swatch at a time and the cached project is
+   * NOT refetched on each one — refetching a room per tap would make painting
+   * feel like waiting. That leaves the cache a few colours behind by the time
+   * anyone leaves this screen, and the board reads its shades from exactly that
+   * cache: without this the board could open on a room it thinks is bare and
+   * offer to send the customer back to paint walls they have already painted.
+   *
+   * Awaited rather than fired off, so the board mounts on fresh regions instead
+   * of flashing the empty state first.
+   */
+  async function openBoard() {
+    setSaveError(null);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['projects', id] });
+    } catch {
+      // A failed refetch is not a reason to block the board — it will render
+      // from whatever the cache holds and refetch again on its own mount.
+    }
+    router.push(`/board/${id}`);
+  }
+
+  /**
    * Start the pipeline.
    *
    * AUTO cleans the photo and finds the surfaces; MANUAL cleans and stops, so
@@ -789,7 +813,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               fullWidth
               disabled={!readOnly && paintedCount === 0}
               icon={<Ionicons name="document-text-outline" size={18} color="#fff" />}
-              onPress={() => router.push(`/board/${id}`)}
+              onPress={openBoard}
             />
             {!readOnly && paintedCount === 0 ? (
               <Text variant="caption" center>

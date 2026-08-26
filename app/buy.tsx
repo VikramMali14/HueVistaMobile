@@ -75,7 +75,7 @@ export default function Buy() {
 
       <Card>
         <Line
-          label={isRoom ? 'One room' : `One AI image${credits?.renderCost === 1 ? '' : 's'}`}
+          label={isRoom ? 'One room' : 'One AI image'}
           value={known ? formatPaise(pricePaise) : '—'}
         />
         <Line

@@ -48,11 +48,12 @@ export default function VerifyScreen() {
     }
   }
 
-  async function confirm() {
+  async function confirm(value: string = code) {
+    if (value.length < 6 || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await verificationApi.confirmEmail(code);
+      await verificationApi.confirmEmail(value);
       haptics.success();
       setDone(true);
       setCode('');
@@ -111,7 +112,7 @@ export default function VerifyScreen() {
                   }}
                   mode="numeric"
                   invalid={!!error}
-                  onSubmitEditing={confirm}
+                  onComplete={confirm}
                   autoFocus
                   accessibilityLabel="Verification code"
                 />
@@ -120,7 +121,7 @@ export default function VerifyScreen() {
                   fullWidth
                   loading={busy}
                   disabled={code.length < 6 || busy}
-                  onPress={confirm}
+                  onPress={() => confirm()}
                 />
                 <Button label="Send another" variant="ghost" fullWidth loading={busy} onPress={send} />
               </>
