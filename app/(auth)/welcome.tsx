@@ -1,16 +1,50 @@
-import { View, StyleSheet, ImageBackground } from 'react-native';
+import { useEffect } from 'react';
+import { View, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Text, Serif, Button, PressableScale } from '../../src/components';
-import { colors, spacing, fontSize } from '../../src/theme';
+import { Text, Serif, Button, PressableScale, Aurora } from '../../src/components';
+import {
+  colors,
+  spacing,
+  radius,
+  fontSize,
+  duration,
+  easing,
+  useAnimatedValue,
+  useReducedMotion,
+} from '../../src/theme';
+
+/**
+ * The wall, as a fan of paint.
+ *
+ * The obvious hero here is a photograph of a painted room, and the app has no
+ * such photograph — the only bundled image is `sample-room.png`, a flat grey
+ * segmentation fixture that under a gradient reads as an image that failed to
+ * load. Shipping it as the first thing anyone sees would open the app on a
+ * broken-looking rectangle.
+ *
+ * So the hero is the product itself: real catalogue colours at a size worth
+ * judging, dealt out like chips fanned across a counter. It is honest — every
+ * one of these is a shade the app can actually put on a wall — it needs no
+ * photography, and it says "paint" in the first half second.
+ *
+ * Replace it with a real room photograph the moment there is one worth using;
+ * `HERO` is the only thing to change.
+ */
+const HERO = [
+  { hex: '#4d5b83', span: 2 },
+  { hex: '#e9d6b0', span: 1 },
+  { hex: '#9fb79a', span: 1 },
+  { hex: '#c06a4d', span: 1 },
+  { hex: '#2f6f6a', span: 2 },
+  { hex: '#d8c3a5', span: 1 },
+  { hex: '#7c5cff', span: 1 },
+  { hex: '#c9cdc7', span: 2 },
+  { hex: '#c98b86', span: 1 },
+] as const;
 
 /**
  * The first screen.
- *
- * A photograph of a room fills the top two-thirds and the copy sits in the
- * gradient below it, because the single most persuasive thing this product can
- * say is a painted wall — not a paragraph about one. Everything on the screen
- * is subordinate to the picture.
  *
  * This is one of the three places the italic serif is spent (see SERIF_BUDGET
  * in theme/typography.ts). It gets the word "chosen", which is the promise.
@@ -24,17 +58,23 @@ export default function Welcome() {
 
   return (
     <View style={styles.root}>
-      <ImageBackground
-        source={require('../../assets/spike/sample-room.png')}
-        style={styles.photo}
-        imageStyle={styles.photoImage}
-      >
+      <Aurora intensity={1.15} />
+
+      <View style={styles.hero}>
+        <View style={styles.heroGrid}>
+          {HERO.map((band, i) => (
+            <Band key={band.hex} hex={band.hex} span={band.span} index={i} />
+          ))}
+        </View>
+        {/* The colour runs out under the copy rather than stopping at an edge,
+            so the type sits in the same space as the paint. */}
         <LinearGradient
-          colors={['rgba(5,4,9,0)', 'rgba(5,4,9,0.86)', colors.bg]}
-          locations={[0, 0.52, 0.82]}
+          colors={['rgba(5,4,9,0)', 'rgba(5,4,9,0.72)', colors.bg]}
+          locations={[0, 0.55, 0.94]}
           style={StyleSheet.absoluteFill}
+          pointerEvents="none"
         />
-      </ImageBackground>
+      </View>
 
       <View style={styles.body}>
         <View style={styles.copy}>
@@ -42,8 +82,8 @@ export default function Welcome() {
             Asian Paints at launch
           </Text>
           <Text variant="display">
-            See your walls in your <Serif size={fontSize.display}>chosen</Serif> colour — before you paint
-            a single stroke.
+            See your walls in your <Serif size={fontSize.display}>chosen</Serif> colour — before you
+            paint a single stroke.
           </Text>
         </View>
 
@@ -78,16 +118,61 @@ export default function Welcome() {
   );
 }
 
+/** One colour in the fan, arriving in turn. */
+function Band({ hex, span, index }: { hex: string; span: number; index: number }) {
+  const enter = useAnimatedValue(0);
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    const anim = Animated.timing(enter, {
+      toValue: 1,
+      duration: reduced ? duration.fast : duration.reveal,
+      delay: reduced ? 0 : index * 55,
+      easing: easing.entrance,
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [enter, index, reduced]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.band,
+        {
+          flexGrow: span,
+          backgroundColor: hex,
+          opacity: enter,
+          transform: [
+            { scaleY: enter.interpolate({ inputRange: [0, 1], outputRange: [reduced ? 1 : 0.86, 1] }) },
+          ],
+        },
+      ]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  photo: {
+  hero: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: '62%',
+    height: '58%',
   },
-  photoImage: { resizeMode: 'cover' },
+  heroGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignContent: 'stretch',
+  },
+  band: {
+    // Three rows of bands, each at least a third of the width, so the fan reads
+    // as a wall of colour rather than as a chart.
+    flexBasis: '30%',
+    height: '33.4%',
+  },
   body: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -101,5 +186,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
   },
 });
