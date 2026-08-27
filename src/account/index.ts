@@ -1,9 +1,13 @@
 export {
   useMyEntitlement,
+  useMyProfile,
   useAssignedProducts,
   useShadeCodeScheme,
-  useProjectPurchaseOptions,
+  useAiCredits,
+  useProjectPrice,
+  usePdfAllowance,
+  useMyRenders,
   useRequestMoreProjects,
   useAllowedBrands,
 } from './queries';
-export { EntitlementCard, expiryText } from './EntitlementCard';
+export { expiryText } from './expiry';

@@ -154,7 +154,7 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
           forth between them, and that should not cost a search each way. */}
       {recent.length > 0 ? (
         <View style={styles.group}>
-          <Text variant="overline">Recently used</Text>
+          <Text variant="eyebrow">Recently used</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
             {recent.map((s) => (
               <SwatchTile
@@ -272,7 +272,7 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
         <View style={styles.filterSheet}>
           {allowed.brands.length > 1 ? (
             <View style={styles.group}>
-              <Text variant="overline">Company</Text>
+              <Text variant="eyebrow">Company</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
                 {allowed.brands.map((b) => (
                   <Chip
@@ -302,7 +302,7 @@ export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps
 
           {(familiesQuery.data?.length ?? 0) > 0 ? (
             <View style={styles.group}>
-              <Text variant="overline">Family</Text>
+              <Text variant="eyebrow">Family</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
                 <Chip label="All families" selected={!family} onPress={() => refilter(() => setFamily(undefined))} />
                 {familiesQuery.data?.map((f) => (

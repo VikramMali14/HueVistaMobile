@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Screen, Text, Card, Button, Input } from '../src/components';
+import { Screen, Text, Card, Button, Input, BackLink } from '../src/components';
 import { colors, radius, spacing } from '../src/theme';
 import { supportApi, userMessage, SupportConversation } from '../src/api';
 
@@ -68,12 +68,11 @@ export default function SupportScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Pressable onPress={() => (openId ? setOpenId(null) : router.back())} hitSlop={12}>
-            <Text variant="label" color={colors.fgSoft}>
-              ‹ {openId ? 'All conversations' : 'Back'}
-            </Text>
-          </Pressable>
-          <Text variant="title">Support</Text>
+          <BackLink
+            label={openId ? 'All conversations' : 'Back'}
+            onPress={() => (openId ? setOpenId(null) : router.back())}
+          />
+          <Text variant="display">Help & support.</Text>
         </View>
 
         {!openId ? (
@@ -128,7 +127,7 @@ export default function SupportScreen() {
 
         <View style={styles.composer}>
           {error ? (
-            <Text variant="caption" color={colors.danger}>
+            <Text variant="caption" color={colors.dangerSoft}>
               {error}
             </Text>
           ) : null}

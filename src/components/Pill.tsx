@@ -6,11 +6,17 @@ import { PressableScale } from './PressableScale';
 /** Semantic status tones. Maps to the status color rules in PLAN.md §4. */
 export type StatusTone = 'new' | 'progress' | 'done' | 'expired' | 'neutral';
 
+/**
+ * Pill text is 11px on a tinted ground, so every one of these is the cut of the
+ * colour that survives as TEXT rather than as a rectangle: `accentSoft` over
+ * `accent` (4.56:1 is too tight once the ground is tinted), `dangerSoft` over
+ * the terracotta fill, and the sage's text cut.
+ */
 const toneColor: Record<StatusTone, string> = {
-  new: colors.accent,
+  new: colors.accentSoft,
   progress: colors.warning,
   done: colors.success,
-  expired: colors.danger,
+  expired: colors.dangerSoft,
   neutral: colors.fgMute,
 };
 
@@ -37,8 +43,8 @@ export interface StatusPillProps {
 export function StatusPill({ label, tone = 'neutral', style }: StatusPillProps) {
   const c = toneColor[tone];
   return (
-    <View style={[styles.pill, { backgroundColor: c + '22', borderColor: c + '55' }, style]}>
-      <Text variant="mono" color={c} style={styles.pillText}>
+    <View style={[styles.pill, { backgroundColor: alpha(c, 0.13), borderColor: alpha(c, 0.34) }, style]}>
+      <Text variant="code" color={c} style={styles.pillText}>
         {label.toUpperCase()}
       </Text>
     </View>
@@ -82,43 +88,6 @@ export function Chip({ label, selected, onPress, dot, style }: ChipProps) {
   );
 }
 
-export interface DashedPillProps {
-  label: string;
-  onPress?: () => void;
-  /** Leading glyph or swatch. */
-  icon?: React.ReactNode;
-  disabled?: boolean;
-  style?: ViewStyle;
-}
-
-/**
- * A dashed-outline pill: an offer rather than a command.
- *
- * The reference uses these for "pick how you want to do this" menus, where a
- * column of solid buttons would shout four times over. Same job here — the
- * secondary routes into a flow (import an image, use a past room, enter a code
- * by hand) — while the one filled Button on the screen stays the primary path.
- */
-export function DashedPill({ label, onPress, icon, disabled, style }: DashedPillProps) {
-  return (
-    <PressableScale
-      onPress={disabled ? undefined : onPress}
-      disabled={disabled}
-      haptic="tap"
-      activeScale={0.96}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
-      style={StyleSheet.flatten([styles.dashed, disabled ? { opacity: 0.45 } : null, style])}
-    >
-      {icon}
-      <Text variant="label" color={colors.fg}>
-        {label}
-      </Text>
-    </PressableScale>
-  );
-}
-
 const styles = StyleSheet.create({
   pill: {
     alignSelf: 'flex-start',
@@ -137,6 +106,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     borderRadius: radius.pill,
     borderWidth: 1,
+    // Filter rows are scrubbed with a thumb, so a chip is a full-height target
+    // rather than however tall its label happens to make it.
+    minHeight: 38,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -146,19 +118,5 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     borderWidth: 1,
     borderColor: colors.glassEdge,
-  },
-  dashed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    alignSelf: 'stretch',
-    minHeight: 48,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: alpha(colors.fg, 0.28),
-    backgroundColor: alpha(colors.fg, 0.03),
-    paddingHorizontal: spacing.lg,
   },
 });

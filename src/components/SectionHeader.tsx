@@ -24,7 +24,7 @@ export interface SectionHeaderProps {
 export function SectionHeader({ title, actionLabel, onAction, trailing, style }: SectionHeaderProps) {
   return (
     <View style={[styles.row, style]}>
-      <Text variant="overline">{title}</Text>
+      <Text variant="eyebrow">{title}</Text>
       {trailing ??
         (actionLabel && onAction ? (
           <PressableScale onPress={onAction} haptic="tap" activeScale={0.94} style={styles.action}>

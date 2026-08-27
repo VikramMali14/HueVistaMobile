@@ -1,3 +1,10 @@
+/**
+ * The customer app's whole wire surface.
+ *
+ * Everything the counter, the network and the admin console used to reach for
+ * has gone with those screens — the app ships one role now, and an export here
+ * is a promise that some customer screen has a use for it.
+ */
 export { API_ORIGIN, API_BASE, WEB_ORIGIN, resolveImageUrl, isApiOriginUrl, webUrl } from './config';
 export { apiFetch, setAuthHooks } from './client';
 export type { RequestOptions, AuthHooks } from './client';
@@ -26,89 +33,32 @@ export { recommendationResponseSchema } from './recommendationSchemas';
 export type { RecommendationResponse, ColorCombo, MatchedShade } from './recommendationSchemas';
 export { accessCodesApi } from './accessCodes';
 export { accountApi } from './account';
-export {
-  billingApi,
-  projectPurchaseOptionsSchema,
-  subscriptionSchema,
-  rewardPointsSchema,
-  pdfAllowanceSchema,
-  formatPaise,
-  formatPoints,
-} from './billing';
+export { billingApi, formatPaise, planSchema, pdfAllowanceSchema } from './billing';
+export type { Plan, PdfAllowance } from './billing';
+export { boardsApi, RENDER_STATUSES } from './boards';
 export type {
-  ProjectPurchaseOptions,
-  Subscription,
-  RewardPoints,
-  PdfAllowance,
-} from './billing';
-export { orgApi } from './org';
-export {
-  orgSchema,
-  myAccessSchema,
-  networkNodeSchema,
-  networkReportSchema,
-  retailerBrandOptionSchema,
-  retailerFeatureOptionSchema,
-} from './orgSchemas';
-export type {
-  Org,
-  OrgType,
-  MyAccess,
-  NetworkNode,
-  NetworkReport,
-  RetailerBrandOption,
-  RetailerFeatureOption,
-} from './orgSchemas';
-export { adminApi } from './admin';
-export {
-  adminStatsSchema,
-  adminRevenueSchema,
-  adminAiUsageSchema,
-  adminUserSchema,
-} from './adminSchemas';
-export type { AdminStats, AdminRevenue, AdminAiUsage, AdminUser } from './adminSchemas';
-export { retailApi } from './retail';
-export type { ComboShadeInput, CreateComboInput } from './retail';
-export { catalogueApi, productsApi } from './products';
-export type { ShopProductInput } from './products';
-export {
-  paintBrandSchema,
-  paintLineSchema,
-  defaultBrightness,
-  PRODUCT_CATEGORIES,
-  QUALITY_TIERS,
-} from './catalogueSchemas';
-export type { PaintBrand, PaintLine, ProductCategory, QualityTier } from './catalogueSchemas';
-export {
-  shopAccessCodeSchema,
-  projectGrantSchema,
-  retailerComboSchema,
-  storeLinkSchema,
-  walletSummarySchema,
-} from './retailSchemas';
-export type {
-  ShopAccessCode,
-  ProjectGrant,
-  RetailerCombo,
-  StoreLink,
-  WalletSummary,
-} from './retailSchemas';
-export { painterApi, jobsApi } from './painter';
-export {
-  paintJobSchema,
-  painterProfileSchema,
-  painterRetailerLinkSchema,
-  painterInvitationSchema,
-  PAINT_JOB_STATUSES,
-  decimal,
-} from './painterSchemas';
-export type {
-  PaintJob,
-  PaintJobStatus,
-  PainterProfile,
-  PainterRetailerLink,
-  PainterInvitation,
-} from './painterSchemas';
+  BoardShade,
+  BoardPageInput,
+  ProjectCombo,
+  ColourBoardResult,
+  ProjectRender,
+  RenderStatus,
+  CreateRenderInput,
+  TimeOfDay,
+  BorderMode,
+  Lighting,
+  Furnishing,
+  RenderStyle,
+  RenderQuality,
+  SourceImage,
+} from './boards';
+export { aiCreditsApi, myRendersApi } from './aiCredits';
+export type { AiCreditSummary, MyRender, RenderableProject } from './aiCredits';
+export { shopCombosApi } from './shopCombos';
+export type { ShopCombo, ComboShade } from './shopCombos';
+export { catalogueApi } from './products';
+export { paintBrandSchema, paintLineSchema, defaultBrightness } from './catalogueSchemas';
+export type { PaintBrand, PaintLine } from './catalogueSchemas';
 export { supportApi } from './support';
 export type { SupportConversation, SupportConversationSummary, SupportMessage } from './support';
 export {
@@ -117,7 +67,6 @@ export {
   customerEntitlementSchema,
   assignedProductsSchema,
   shadeCodeSchemeSchema,
-  retiredShadeCodeSchemeSchema,
   shopProductSchema,
 } from './accountSchemas';
 export type {
@@ -126,7 +75,6 @@ export type {
   CustomerEntitlement,
   AssignedProducts,
   ShadeCodeScheme,
-  RetiredShadeCodeScheme,
   ShopProduct,
 } from './accountSchemas';
 export {

@@ -65,7 +65,7 @@ export function ShadeSwatchCard({ shade, scheme, onPress, selected, style }: Sha
           },
         ]}
       >
-        <Text variant="mono" style={styles.swatchCode} color={ink.strong} numberOfLines={1}>
+        <Text variant="code" style={styles.swatchCode} color={ink.strong} numberOfLines={1}>
           {display.code}
         </Text>
         {lrv != null ? (
@@ -75,7 +75,7 @@ export function ShadeSwatchCard({ shade, scheme, onPress, selected, style }: Sha
         ) : null}
       </View>
 
-      <Text variant="heading" numberOfLines={1}>
+      <Text variant="subhead" numberOfLines={1}>
         {display.label}
       </Text>
 

@@ -1,81 +1,191 @@
-import { View, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
+import { View, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Serif, Button, BrandMark, Reveal, PressableScale } from '../../src/components';
-import { colors, spacing, fontSize } from '../../src/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Text, Serif, Button, PressableScale, Aurora } from '../../src/components';
+import {
+  colors,
+  spacing,
+  radius,
+  fontSize,
+  duration,
+  easing,
+  useAnimatedValue,
+  useReducedMotion,
+} from '../../src/theme';
 
 /**
- * First screen for a signed-out user. Three entry paths (PLAN.md §3): sign in,
- * create an account, or redeem a paint-shop access code.
+ * The wall, as a fan of paint.
  *
- * This is the app's one chance to look like something, so it gets the brightest
- * aurora and the largest type in the product. The old version stacked four
- * equally-weighted buttons under a wordmark, which said nothing about what the
- * app does; the headline now does that job and the buttons fall into rank
- * behind it.
+ * The obvious hero here is a photograph of a painted room, and the app has no
+ * such photograph — the only bundled image is `sample-room.png`, a flat grey
+ * segmentation fixture that under a gradient reads as an image that failed to
+ * load. Shipping it as the first thing anyone sees would open the app on a
+ * broken-looking rectangle.
+ *
+ * So the hero is the product itself: real catalogue colours at a size worth
+ * judging, dealt out like chips fanned across a counter. It is honest — every
+ * one of these is a shade the app can actually put on a wall — it needs no
+ * photography, and it says "paint" in the first half second.
+ *
+ * Replace it with a real room photograph the moment there is one worth using;
+ * `HERO` is the only thing to change.
+ */
+const HERO = [
+  { hex: '#4d5b83', span: 2 },
+  { hex: '#e9d6b0', span: 1 },
+  { hex: '#9fb79a', span: 1 },
+  { hex: '#c06a4d', span: 1 },
+  { hex: '#2f6f6a', span: 2 },
+  { hex: '#d8c3a5', span: 1 },
+  { hex: '#7c5cff', span: 1 },
+  { hex: '#c9cdc7', span: 2 },
+  { hex: '#c98b86', span: 1 },
+] as const;
+
+/**
+ * The first screen.
+ *
+ * This is one of the three places the italic serif is spent (see SERIF_BUDGET
+ * in theme/typography.ts). It gets the word "chosen", which is the promise.
+ *
+ * Two ways in, in the order they are actually used: most people arrive holding
+ * a slip of paper from a paint shop, so the code goes first and carries the lit
+ * button. "Just looking" is real and stays, quietly.
  */
 export default function Welcome() {
   const router = useRouter();
 
   return (
-    <Screen contentStyle={styles.content} auroraIntensity={1.25}>
+    <View style={styles.root}>
+      <Aurora intensity={1.15} />
+
       <View style={styles.hero}>
-        <Reveal>
-          <BrandMark />
-        </Reveal>
-
-        <Reveal index={1} style={styles.headline}>
-          <Text variant="hero">
-            See the colour{'\n'}before you{' '}
-            <Serif size={fontSize.hero}>commit</Serif>
-          </Text>
-        </Reveal>
-
-        <Reveal index={2}>
-          <Text variant="bodySoft" style={styles.sub}>
-            Try real catalogue shades on your own walls, in your own light.
-          </Text>
-        </Reveal>
+        <View style={styles.heroGrid}>
+          {HERO.map((band, i) => (
+            <Band key={band.hex} hex={band.hex} span={band.span} index={i} />
+          ))}
+        </View>
+        {/* The colour runs out under the copy rather than stopping at an edge,
+            so the type sits in the same space as the paint. */}
+        <LinearGradient
+          colors={['rgba(5,4,9,0)', 'rgba(5,4,9,0.72)', colors.bg]}
+          locations={[0, 0.55, 0.94]}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
       </View>
 
-      <Reveal index={3} style={styles.actions}>
-        <Button label="Sign in" size="lg" fullWidth onPress={() => router.push('/sign-in')} />
-        <Button
-          label="Create an account"
-          variant="outline"
-          size="lg"
-          fullWidth
-          onPress={() => router.push('/register')}
-        />
-        <Button
-          label="My paint shop gave me a code"
-          variant="ghost"
-          fullWidth
-          onPress={() => router.push('/redeem-code')}
-        />
-        <PressableScale
-          onPress={() => router.push('/browse-shades')}
-          haptic="tap"
-          activeScale={0.96}
-          style={styles.browse}
-        >
-          <Text variant="label" color={colors.accentSoft} center>
-            Browse shades without an account
+      <View style={styles.body}>
+        <View style={styles.copy}>
+          <Text variant="eyebrow" color={colors.accentSoft}>
+            Asian Paints at launch
           </Text>
-        </PressableScale>
-        <Text variant="caption" center style={styles.legal}>
-          By continuing you agree to HueVista&apos;s Terms and Privacy Policy.
-        </Text>
-      </Reveal>
-    </Screen>
+          <Text variant="display">
+            See your walls in your <Serif size={fontSize.display}>chosen</Serif> colour — before you
+            paint a single stroke.
+          </Text>
+        </View>
+
+        <View style={styles.actions}>
+          <Button
+            label="I have a code from my shop"
+            size="lg"
+            fullWidth
+            onPress={() => router.push('/redeem-code')}
+          />
+          <Button
+            label="Sign in"
+            variant="secondary"
+            size="lg"
+            fullWidth
+            onPress={() => router.push('/sign-in')}
+          />
+          <PressableScale
+            onPress={() => router.push('/browse-shades')}
+            haptic="tap"
+            activeScale={0.96}
+            accessibilityRole="button"
+            style={styles.browse}
+          >
+            <Text variant="label" color={colors.fgMute}>
+              Just looking? Browse the shade catalogue
+            </Text>
+          </PressableScale>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/** One colour in the fan, arriving in turn. */
+function Band({ hex, span, index }: { hex: string; span: number; index: number }) {
+  const enter = useAnimatedValue(0);
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    const anim = Animated.timing(enter, {
+      toValue: 1,
+      duration: reduced ? duration.fast : duration.reveal,
+      delay: reduced ? 0 : index * 55,
+      easing: easing.entrance,
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [enter, index, reduced]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.band,
+        {
+          flexGrow: span,
+          backgroundColor: hex,
+          opacity: enter,
+          transform: [
+            { scaleY: enter.interpolate({ inputRange: [0, 1], outputRange: [reduced ? 1 : 0.86, 1] }) },
+          ],
+        },
+      ]}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  content: { flex: 1, justifyContent: 'space-between', paddingVertical: spacing.xxxl },
-  hero: { flex: 1, justifyContent: 'center', gap: spacing.lg },
-  headline: { marginTop: spacing.sm },
-  sub: { maxWidth: 300 },
-  actions: { gap: spacing.md },
-  browse: { paddingVertical: spacing.sm },
-  legal: { color: colors.fgMute, marginTop: spacing.sm },
+  root: { flex: 1, backgroundColor: colors.bg },
+  hero: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '58%',
+  },
+  heroGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignContent: 'stretch',
+  },
+  band: {
+    // Three rows of bands, each at least a third of the width, so the fan reads
+    // as a wall of colour rather than as a chart.
+    flexBasis: '30%',
+    height: '33.4%',
+  },
+  body: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
+    gap: spacing.xl,
+  },
+  copy: { gap: spacing.md },
+  actions: { gap: spacing.sm },
+  browse: {
+    alignSelf: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+  },
 });

@@ -81,8 +81,8 @@ export function FinderPanel({ picking, onTogglePicking, pickedHex, onApply, disa
           <View style={styles.picked}>
             <View style={[styles.pickedSwatch, { backgroundColor: pickedHex, borderColor: alpha(pickedHex, 0.5) }]} />
             <View style={styles.pickedMeta}>
-              <Text variant="overline">Lifted from your photo</Text>
-              <Text variant="mono">{pickedHex.toUpperCase()}</Text>
+              <Text variant="eyebrow">Lifted from your photo</Text>
+              <Text variant="code">{pickedHex.toUpperCase()}</Text>
             </View>
           </View>
 
@@ -92,7 +92,7 @@ export function FinderPanel({ picking, onTogglePicking, pickedHex, onApply, disa
             </View>
           ) : matches.isError ? (
             <View style={styles.group}>
-              <Text variant="body" color={colors.danger}>
+              <Text variant="body" color={colors.dangerSoft}>
                 Couldn&apos;t reach the catalogue to match that colour.
               </Text>
               <Button label="Try again" variant="secondary" fullWidth onPress={() => matches.refetch()} />
@@ -121,7 +121,7 @@ export function FinderPanel({ picking, onTogglePicking, pickedHex, onApply, disa
                       </Text>
                     </View>
                     <View style={styles.rowMeta}>
-                      <Text variant="heading" numberOfLines={1}>
+                      <Text variant="subhead" numberOfLines={1}>
                         {display.label}
                       </Text>
                       <Text variant="caption" numberOfLines={1}>

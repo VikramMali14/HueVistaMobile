@@ -66,7 +66,7 @@ export function HoldToWall({ visible, hex, label, code, onClose }: HoldToWallPro
             {label}
           </Text>
           {code ? (
-            <Text variant="mono" color={ink.soft}>
+            <Text variant="code" color={ink.soft}>
               {code}
             </Text>
           ) : null}

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, PressableScale, Text } from '../components';
 import { colors, spacing, radius } from '../theme';
-import { retailApi, type MatchedShade, type RecommendationResponse, type ShadeCodeScheme } from '../api';
+import { shopCombosApi, type MatchedShade, type RecommendationResponse, type ShadeCodeScheme } from '../api';
 import { shadeDisplay } from '../shades/shadeCodes';
 import { useShadeCodeScheme } from '../account/queries';
 import { useSession } from '../auth';
@@ -53,8 +53,8 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
    * customer with no shop gets a 403 or an empty list, which read the same.
    */
   const combos = useQuery({
-    queryKey: ['retail', 'my-combos'],
-    queryFn: () => retailApi.myCombos(),
+    queryKey: ['account', 'shop-combos'],
+    queryFn: () => shopCombosApi.mine(),
     enabled: status === 'authenticated',
     staleTime: 30 * 60_000,
     retry: false,
@@ -66,10 +66,10 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
     <View style={styles.root}>
       {shopCombos.length > 0 ? (
         <View style={styles.group}>
-          <Text variant="overline">From your shop</Text>
+          <Text variant="eyebrow">From your shop</Text>
           {shopCombos.map((combo) => (
             <Card key={combo.id} tone="quiet" style={styles.combo}>
-              <Text variant="heading">{combo.name ?? 'Shop palette'}</Text>
+              <Text variant="subhead">{combo.name ?? 'Shop palette'}</Text>
               <View style={styles.swatchRow}>
                 {combo.shades.slice(0, 3).map((s, j) =>
                   s.hex ? (
@@ -96,7 +96,7 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
       ) : null}
 
       <View style={styles.group}>
-        {shopCombos.length > 0 ? <Text variant="overline">Matched to this room</Text> : null}
+        {shopCombos.length > 0 ? <Text variant="eyebrow">Matched to this room</Text> : null}
 
         {loading ? (
           <View style={styles.centre}>
@@ -107,7 +107,7 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
           </View>
         ) : error ? (
           <View style={styles.group}>
-            <Text variant="body" color={colors.danger}>
+            <Text variant="body" color={colors.dangerSoft}>
               {error}
             </Text>
             <Button label="Try again" variant="secondary" fullWidth onPress={onAsk} />
@@ -116,7 +116,7 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
           <View style={styles.group}>
             <Text variant="bodySoft">
               Palettes chosen for this room — the light in it, what is already on the floor and the
-              furniture. Included in the project, so asking costs nothing.
+              furniture. Included in the room, so asking costs nothing.
             </Text>
             <Button
               label="Suggest palettes"
@@ -128,10 +128,10 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
           </View>
         ) : (
           <>
-            <Text variant="bodySoft">Tap a colour to paint the selected wall.</Text>
+            <Text variant="bodySoft">Tap a colour to paint the selected surface.</Text>
             {claudeCombos.map((combo, i) => (
               <Card key={`${combo.name ?? 'combo'}-${i}`} tone="quiet" style={styles.combo}>
-                <Text variant="heading">{combo.name ?? `Palette ${i + 1}`}</Text>
+                <Text variant="subhead">{combo.name ?? `Palette ${i + 1}`}</Text>
                 {combo.rationale ? <Text variant="bodySoft">{combo.rationale}</Text> : null}
                 <View style={styles.swatchRow}>
                   <Swatch

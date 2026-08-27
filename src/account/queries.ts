@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { accountApi, authApi, billingApi, shadesApi } from '../api';
+import { accountApi, aiCreditsApi, authApi, billingApi, myRendersApi } from '../api';
 import { useSession } from '../auth';
 import { useShadeBrands } from '../shades/queries';
 
@@ -47,12 +47,11 @@ export function useMyProfile() {
 
 /** Companies and products the shop unlocked on this customer's code. */
 export function useAssignedProducts() {
-  const { status, role } = useSession();
+  const { status } = useSession();
   return useQuery({
     queryKey: ['account', 'assigned-products'],
     queryFn: () => accountApi.assignedProducts(),
-    // Only a redeemed customer has an issuing shop to ask about.
-    enabled: status === 'authenticated' && role === 'CUSTOMER',
+    enabled: status === 'authenticated',
     staleTime: 5 * MINUTE,
     retry: false,
   });
@@ -73,14 +72,65 @@ export function useShadeCodeScheme() {
   });
 }
 
-/** What buying (or reopening) a project costs this account today. */
-export function useProjectPurchaseOptions() {
+/**
+ * The AI image wallet: spendable credits and what one costs today.
+ *
+ * `eligible: false` is a real answer, not an error — some accounts cannot hold
+ * credits at all — so a screen reading this hides the top-up rather than
+ * showing a price nobody could pay.
+ */
+export function useAiCredits() {
   const { status } = useSession();
   return useQuery({
-    queryKey: ['billing', 'project-purchase-options'],
-    queryFn: () => billingApi.projectPurchaseOptions(),
+    queryKey: ['billing', 'ai-credits'],
+    queryFn: () => aiCreditsApi.summary(),
     enabled: status === 'authenticated',
-    staleTime: 5 * MINUTE,
+    staleTime: MINUTE,
+    retry: false,
+  });
+}
+
+/**
+ * What one extra project costs with no plan behind you — the price a customer
+ * buying for themselves actually pays, read off the free tier rather than held
+ * as a constant that would quietly go wrong the day pricing moves.
+ */
+export function useProjectPrice() {
+  const plans = useQuery({
+    queryKey: ['billing', 'plans'],
+    queryFn: () => billingApi.plans(),
+    staleTime: 30 * MINUTE,
+    retry: false,
+  });
+  return useMemo(() => {
+    const free = plans.data?.find((p) => !p.purchasable) ?? plans.data?.[0];
+    return {
+      pricePaise: free?.extraProjectPriceWithTaxInPaise ?? 0,
+      loading: plans.isLoading,
+    };
+  }, [plans.data, plans.isLoading]);
+}
+
+/** How many colour boards are left to download this month, and images per board. */
+export function usePdfAllowance() {
+  const { status } = useSession();
+  return useQuery({
+    queryKey: ['billing', 'pdf-allowance'],
+    queryFn: () => billingApi.pdfAllowance(),
+    enabled: status === 'authenticated',
+    staleTime: MINUTE,
+    retry: false,
+  });
+}
+
+/** Every finished AI image this account owns, whichever room it came from. */
+export function useMyRenders() {
+  const { status } = useSession();
+  return useQuery({
+    queryKey: ['account', 'renders'],
+    queryFn: () => myRendersApi.list(),
+    enabled: status === 'authenticated',
+    staleTime: MINUTE,
     retry: false,
   });
 }
@@ -105,46 +155,23 @@ export function useRequestMoreProjects() {
 /**
  * The paint companies this account may actually work with.
  *
- * A customer's restriction comes from the code their shop issued (the brands it
- * unlocked); a retailer's comes from their distributor's grant. Both end up as
- * the same answer here so the catalogue has one question to ask.
- *
- * `restricted: false` means no limit — `brands` is then the whole catalogue and
- * carries no meaning of its own.
+ * A customer's restriction comes from the code their shop issued — the brands it
+ * unlocked. `restricted: false` means no limit, and `brands` is then the whole
+ * catalogue and carries no meaning of its own.
  */
 export function useAllowedBrands() {
-  const { role } = useSession();
   const allBrands = useShadeBrands();
   const assigned = useAssignedProducts();
-  const isCustomer = role === 'CUSTOMER';
-
-  const myBrands = useQuery({
-    queryKey: ['account', 'my-brands'],
-    // Retailers (and painters/distributors) read the distributor's grant.
-    queryFn: () => shadesApi.myBrands(),
-    enabled: role != null && !isCustomer,
-    staleTime: 30 * MINUTE,
-    retry: false,
-  });
 
   return useMemo(() => {
     const all = allBrands.data ?? [];
-    if (isCustomer) {
-      const names = assigned.data?.allowedBrands ?? [];
-      if (names.length === 0) return { restricted: false, brands: all, loading: allBrands.isLoading };
-      const wanted = new Set(names.map((n) => n.trim().toLowerCase()));
-      return {
-        restricted: true,
-        brands: all.filter((b) => wanted.has(b.name.trim().toLowerCase())),
-        loading: allBrands.isLoading || assigned.isLoading,
-      };
-    }
-    const mine = myBrands.data;
-    // The shop-scoped endpoint returns everything when unrestricted, so a shorter
-    // list than the catalogue is what marks a real restriction.
-    if (!mine || mine.length === all.length) {
-      return { restricted: false, brands: all, loading: allBrands.isLoading || myBrands.isLoading };
-    }
-    return { restricted: true, brands: mine, loading: false };
-  }, [allBrands.data, allBrands.isLoading, assigned.data, assigned.isLoading, isCustomer, myBrands.data, myBrands.isLoading]);
+    const names = assigned.data?.allowedBrands ?? [];
+    if (names.length === 0) return { restricted: false, brands: all, loading: allBrands.isLoading };
+    const wanted = new Set(names.map((n) => n.trim().toLowerCase()));
+    return {
+      restricted: true,
+      brands: all.filter((b) => wanted.has(b.name.trim().toLowerCase())),
+      loading: allBrands.isLoading || assigned.isLoading,
+    };
+  }, [allBrands.data, allBrands.isLoading, assigned.data, assigned.isLoading]);
 }
