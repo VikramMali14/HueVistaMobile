@@ -95,19 +95,19 @@ export const RoomPhoto = forwardRef<View, RoomPhotoProps>(function RoomPhoto(
 
       {busyLabel ? (
         <View style={styles.overlay}>
-          <ActivityIndicator color="#fff" />
-          <Text variant="label" color="#fff" style={styles.overlayLabel}>
+          <ActivityIndicator color={colors.onPhoto} />
+          <Text variant="label" color={colors.onPhoto} style={styles.overlayLabel}>
             {busyLabel}
           </Text>
         </View>
       ) : hint ? (
         <View style={styles.hint} pointerEvents="none">
           {mode === 'pick' ? (
-            <Ionicons name="eyedrop-outline" size={13} color="#fff" />
+            <Ionicons name="eyedrop-outline" size={13} color={colors.onPhoto} />
           ) : mode === 'mark' ? (
-            <Ionicons name="scan-outline" size={13} color="#fff" />
+            <Ionicons name="scan-outline" size={13} color={colors.onPhoto} />
           ) : null}
-          <Text variant="caption" color="#fff">
+          <Text variant="caption" color={colors.onPhoto}>
             {hint}
           </Text>
         </View>

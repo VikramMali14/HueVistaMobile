@@ -357,7 +357,7 @@ export default function AiRoute() {
             label="Save to phone"
             size="lg"
             fullWidth
-            icon={<Ionicons name="download-outline" size={18} color="#fff" />}
+            icon={<Ionicons name="download-outline" size={18} color={colors.onFill} />}
             onPress={saveImage}
           />
           <Button
@@ -491,7 +491,7 @@ export default function AiRoute() {
           fullWidth
           loading={requesting}
           disabled={!selectedCombo || short || requesting}
-          icon={<Ionicons name="sparkles" size={18} color="#fff" />}
+          icon={<Ionicons name="sparkles" size={18} color={colors.onFill} />}
           onPress={requestRender}
         />
         {credits?.eligible ? (

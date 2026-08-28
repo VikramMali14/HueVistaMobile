@@ -24,7 +24,7 @@ import {
   Text,
   WorkCard,
 } from '../components';
-import { colors, spacing, radius, alpha, hairline, useElapsedSeconds } from '../theme';
+import { colors, spacing, radius, alpha, hairline, elevation, useElapsedSeconds } from '../theme';
 import { haptics } from '../haptics';
 import { useProject } from '../projects/queries';
 import {
@@ -40,8 +40,9 @@ import {
 import { recommendationsApi } from '../api';
 import { fitBox, samplePhotoHex, useAuthedSkImageState, type PaintLayer } from '../engine';
 import { useRecentShades } from '../shades/recentShades';
-import type { Shade } from '../shades/types';
-import { useRequestMoreProjects } from '../account/queries';
+import { shadeDisplay } from '../shades/shadeCodes';
+import { isCatalogueShade, type Shade } from '../shades/types';
+import { useRequestMoreProjects, useShadeCodeScheme } from '../account/queries';
 import { expiryText } from '../account/expiry';
 import { RoomPhoto, type CanvasMode } from './RoomPhoto';
 import { BeforeAfter } from './BeforeAfter';
@@ -51,6 +52,7 @@ import { FinderPanel } from './FinderPanel';
 import { MaskStudioSheet } from './MaskStudioSheet';
 import { StepRail, type StepId } from './StepRail';
 import { stepOfProject } from './roomStep';
+import { summariseSurfaces } from './surfaceGroups';
 
 type Applied = { hex: string; code?: string };
 
@@ -123,7 +125,11 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   const [comparing, setComparing] = useState(false);
 
   const [maskOpen, setMaskOpen] = useState(false);
-  const [maskTarget, setMaskTarget] = useState<{ id: number; label: string } | null>(null);
+  const [maskTarget, setMaskTarget] = useState<{
+    id: number;
+    label: string;
+    category?: string | null;
+  } | null>(null);
   const [wallMenuOpen, setWallMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -135,6 +141,9 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
 
   const askShop = useRequestMoreProjects();
   const shotRef = useRef<View>(null);
+  // The shop's own numbering, so the code on the dock is the code at the
+  // counter rather than the manufacturer's.
+  const scheme = useShadeCodeScheme().data;
 
   const readOnly = project?.readOnly ?? false;
   const segmented = status === 'SEGMENTED';
@@ -193,14 +202,28 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
     maxHeight: Math.round(windowHeight * (step === 'colour' ? 0.42 : 0.55)),
   });
 
-  function appliedColor(regionId: number, persistedHex?: string | null): Applied | null {
-    if (overrides[regionId]) return overrides[regionId];
-    return persistedHex ? { hex: persistedHex } : null;
+  /**
+   * What is on a surface right now — the swatch just tapped, or what the server
+   * holds for it.
+   *
+   * The persisted branch used to return the hex alone and drop the region's
+   * `appliedShadeCode` on the floor; the one caller that wanted a code worked
+   * around it by passing no region at all. So a room reopened the next day knew
+   * which colour was on the wall but not which shade it was: nothing was ringed
+   * in the catalogue, and the customer had to hunt down their own colour again
+   * to be sure it was still the one they picked.
+   */
+  function appliedColor(region: Region | null | undefined): Applied | null {
+    if (!region) return null;
+    const override = overrides[region.id];
+    if (override) return override;
+    if (!region.appliedHexCode) return null;
+    return { hex: region.appliedHexCode, code: region.appliedShadeCode ?? undefined };
   }
 
   const layers: PaintLayer[] = regions
     .map((r) => {
-      const c = appliedColor(r.id, r.appliedHexCode);
+      const c = appliedColor(r);
       return c ? { key: `r${r.id}-${c.hex}`, maskUrl: regionMaskUrl(id, r.id), color: c.hex } : null;
     })
     .filter((l): l is PaintLayer => l !== null);
@@ -217,11 +240,19 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
     // fails, so a failed autosave gets its own warning buzz rather than only a
     // line of text under a tray the user is still scrolling.
     haptics.press();
-    remember(shade);
-    setOverrides((prev) => ({ ...prev, [selectedRegionId]: { hex: shade.hex, code: shade.code } }));
+    // A palette suggestion the model matched to no product is a hex and nothing
+    // more. It goes on the wall like any other colour, but it is not a shade
+    // code — sending one invents a product, and "Recently used" is a way back
+    // to a shade, which a colour with no catalogue entry is not.
+    const catalogue = isCatalogueShade(shade);
+    if (catalogue) remember(shade);
+    setOverrides((prev) => ({
+      ...prev,
+      [selectedRegionId]: { hex: shade.hex, code: catalogue ? shade.code : undefined },
+    }));
     try {
       await projectsApi.updateRegionColors(id, [
-        { regionId: selectedRegionId, shadeCode: shade.code, hexCode: shade.hex },
+        { regionId: selectedRegionId, shadeCode: catalogue ? shade.code : null, hexCode: shade.hex },
       ]);
       setSaveError(null);
     } catch {
@@ -358,15 +389,15 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
     setCanvasNote(null);
   }
 
+  const selectedColour = appliedColor(selectedRegion);
+
   const canvasMode: CanvasMode = picking ? 'pick' : 'idle';
   /**
    * The screen sits in the light of whatever colour is in play — the paint on
    * the selected surface, or the colour just lifted out of the photo. It is the
    * one place in the app where the background knows what the user is doing.
    */
-  const tint =
-    pickedHex ??
-    (selectedRegion ? (appliedColor(selectedRegion.id, selectedRegion.appliedHexCode)?.hex ?? null) : null);
+  const tint = pickedHex ?? selectedColour?.hex ?? null;
 
   const title = project?.name ?? 'Untitled room';
 
@@ -456,17 +487,18 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
 
         <View style={styles.choices}>
           <Choice
-            icon="sparkles-outline"
+            auto
             title="Find them for me"
-            body="The model marks every wall, ceiling and trim it can see. About a minute."
+            cost="about a minute"
+            body="The model marks every wall, ceiling and trim it can see. Anything it gets wrong is redrawn on the next step."
             primary
             disabled={starting}
             onPress={() => startSegmentation('AUTO')}
           />
           <Choice
-            icon="brush-outline"
             title="I'll mark them myself"
-            body="Draw round each surface with a finger. Slower, exact, and it always works."
+            cost="a few minutes"
+            body="Trace round each surface with a finger, or drop a corner at a time. Slower, exact, and it always works."
             disabled={starting}
             onPress={() => startSegmentation('MANUAL')}
           />
@@ -575,7 +607,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   const surfaceChips = (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
       {regions.map((r, i) => {
-        const c = appliedColor(r.id, r.appliedHexCode);
+        const c = appliedColor(r);
         const active = r.id === selectedRegionId;
         return (
           <Pressable
@@ -589,9 +621,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
             accessibilityLabel={`${r.label ?? r.category ?? `Surface ${i + 1}`}${c ? ', painted' : ', bare'}`}
             style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}
           >
-            <View
-              style={[styles.chipDot, { backgroundColor: c?.hex ?? colors.surface2 }]}
-            />
+            <SurfaceSwatch hex={c?.hex ?? null} />
             <Text variant="label" color={active ? colors.accentSoft : colors.fgSoft}>
               {r.label ?? r.category ?? `Surface ${i + 1}`}
             </Text>
@@ -603,7 +633,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
           onPress={() => setWallMenuOpen(true)}
           accessibilityRole="button"
           accessibilityLabel="Edit a surface, or add a new one"
-          style={[styles.chip, styles.chipDashed]}
+          style={[styles.chip, styles.chipGhost]}
         >
           <Ionicons name="options-outline" size={14} color={colors.accentSoft} />
           <Text variant="label" color={colors.accentSoft}>
@@ -717,12 +747,25 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
           </View>
 
           <View style={styles.summary}>
-            {summarise(regions).map((row) => (
+            {summariseSurfaces(regions, appliedColor).map((row) => (
               <View key={row.label} style={styles.summaryRow}>
-                <View style={[styles.summaryDot, { backgroundColor: row.colour }]} />
-                <Text variant="label" style={styles.summaryLabel}>
-                  {row.label}
-                </Text>
+                <Text variant="label">{row.label}</Text>
+                {/* A leader rule to the count, the way a contents page runs one
+                    to a page number. What used to sit here was a coloured dot
+                    per category — violet for walls, warm for the ceiling, sage
+                    for trim — three colours this product uses for other things
+                    entirely, standing in for nothing. */}
+                <View style={styles.summaryLead} />
+                {row.hexes.length > 0 ? (
+                  <View style={styles.summarySwatches}>
+                    {row.hexes.map((hex, i) => (
+                      <View
+                        key={`${hex}-${i}`}
+                        style={[styles.summarySwatch, { backgroundColor: hex }]}
+                      />
+                    ))}
+                  </View>
+                ) : null}
                 <Text variant="code">{row.count}</Text>
               </View>
             ))}
@@ -734,7 +777,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
                 label="Pick colours"
                 size="lg"
                 fullWidth
-                icon={<Ionicons name="color-palette-outline" size={18} color="#fff" />}
+                icon={<Ionicons name="color-palette-outline" size={18} color={colors.onFill} />}
                 onPress={() => setStepOverride('colour')}
               />
               <Button
@@ -751,6 +794,26 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
       ) : (
         <>
           <View style={styles.dock}>
+            {/* What is being painted, and what is on it — the one line the three
+                pickers below all act on. It used to be a grey caption under the
+                tabs saying "Painting Main wall", which put the target of every
+                tap in the smallest type on the screen. */}
+            <View style={styles.dockHead}>
+              <SurfaceSwatch hex={selectedColour?.hex ?? null} />
+              <Text variant="label" numberOfLines={1} color={colors.fg} style={styles.dockTarget}>
+                {selectedRegion
+                  ? (selectedRegion.label ?? selectedRegion.category ?? 'Selected surface')
+                  : 'No surface chosen'}
+              </Text>
+              <Text variant="code">
+                {selectedColour
+                  ? selectedColour.code
+                    ? shadeDisplay(scheme, { code: selectedColour.code }).code
+                    : selectedColour.hex.toUpperCase()
+                  : 'bare'}
+              </Text>
+            </View>
+
             <Segmented
               options={DOCK_OPTIONS}
               value={dock}
@@ -763,18 +826,14 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               accessibilityLabel="How to choose a colour"
             />
 
-            {!readOnly ? (
-              <Text variant="caption">
-                {selectedRegion
-                  ? `Painting ${selectedRegion.label ?? 'the selected surface'}`
-                  : 'Choose a surface above, then a colour.'}
-              </Text>
+            {!readOnly && !selectedRegion ? (
+              <Text variant="caption">Choose a surface above, then a colour.</Text>
             ) : null}
 
             {dock === 'shades' ? (
               <ColourPanel
                 onPick={applyShade}
-                selectedCode={selectedRegionId != null ? appliedColor(selectedRegionId, null)?.code : null}
+                selectedCode={selectedColour?.code ?? null}
                 disabled={readOnly}
               />
             ) : dock === 'palettes' ? (
@@ -812,7 +871,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               size="lg"
               fullWidth
               disabled={!readOnly && paintedCount === 0}
-              icon={<Ionicons name="document-text-outline" size={18} color="#fff" />}
+              icon={<Ionicons name="document-text-outline" size={18} color={colors.onFill} />}
               onPress={openBoard}
             />
             {!readOnly && paintedCount === 0 ? (
@@ -867,7 +926,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
             <Text variant="bodySoft">Nothing marked yet. Add the first surface below.</Text>
           ) : (
             regions.map((r, i) => {
-              const c = appliedColor(r.id, r.appliedHexCode);
+              const c = appliedColor(r);
               const label = r.label ?? r.category ?? `Surface ${i + 1}`;
               return (
                 <View key={r.id} style={styles.wallRow}>
@@ -882,7 +941,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
                     accessibilityState={{ selected: r.id === selectedRegionId }}
                     accessibilityLabel={`Paint ${label}`}
                   >
-                    <View style={[styles.chipDot, { backgroundColor: c?.hex ?? colors.surface2 }]} />
+                    <SurfaceSwatch hex={c?.hex ?? null} />
                     <Text
                       variant="body"
                       numberOfLines={1}
@@ -901,7 +960,9 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
                     label={`Redraw ${label}`}
                     onPress={() => {
                       setWallMenuOpen(false);
-                      setMaskTarget({ id: r.id, label });
+                      // The category travels with the target so replacing an
+                      // outline cannot reclassify the surface it belongs to.
+                      setMaskTarget({ id: r.id, label, category: r.category });
                       setMaskOpen(true);
                     }}
                   />
@@ -961,25 +1022,24 @@ function SegmentingCard({ onLeave }: { onLeave: () => void }) {
   );
 }
 
-/** Group the surfaces by what they are, for the step-4 summary. */
-function summarise(regions: Region[]): { label: string; count: number; colour: string }[] {
-  const buckets: Record<string, { label: string; colour: string }> = {
-    MAIN_WALL: { label: 'Walls', colour: colors.accent },
-    ACCENT_WALL: { label: 'Walls', colour: colors.accent },
-    OTHER_WALL: { label: 'Walls', colour: colors.accent },
-    CEILING: { label: 'Ceiling', colour: colors.warm },
-    TRIM: { label: 'Trim', colour: colors.success },
-    MANUAL: { label: 'Marked by hand', colour: colors.accentSoft },
-  };
-  const counts = new Map<string, { label: string; count: number; colour: string }>();
-  regions.forEach((r) => {
-    const key = (r.category ?? 'MANUAL').toUpperCase();
-    const bucket = buckets[key] ?? { label: 'Other', colour: colors.fgMute };
-    const found = counts.get(bucket.label);
-    if (found) found.count += 1;
-    else counts.set(bucket.label, { label: bucket.label, count: 1, colour: bucket.colour });
-  });
-  return [...counts.values()];
+/**
+ * The colour on one surface, as a chip.
+ *
+ * A bare surface is struck through rather than filled with a dark grey, which
+ * is what it used to be — and a dark grey dot on a dark row reads as a colour
+ * that happens to be nearly black, not as nothing.
+ */
+function SurfaceSwatch({ hex }: { hex: string | null }) {
+  return (
+    <View
+      style={[
+        styles.chipSwatch,
+        hex ? { backgroundColor: hex, borderColor: alpha(hex, 0.65) } : styles.chipSwatchBare,
+      ]}
+    >
+      {hex ? null : <View style={styles.chipSwatchStrike} />}
+    </View>
+  );
 }
 
 function Blocked({
@@ -1021,16 +1081,32 @@ function Blocked({
   );
 }
 
+/**
+ * The two ways to find a wall, each showing what it produces.
+ *
+ * This was a pair of rows built the way every generated list row is built — a
+ * rounded tile with an icon in it, a title, a grey line, a chevron — and the
+ * icon doing the explaining was `sparkles`, which in this product means
+ * nothing at all beyond "AI happened here". The two options are not two menu
+ * entries; they are two different results, and a customer choosing between
+ * them is choosing between an outline a model drew and an outline they draw.
+ * So each one shows its own outline instead of an icon, and says what it
+ * costs in time rather than being ranked by a chevron.
+ */
 function Choice({
-  icon,
+  auto,
   title,
+  cost,
   body,
   primary,
   disabled,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  /** Draw the surface as the model finds it — filled — rather than as a trace. */
+  auto?: boolean;
   title: string;
+  /** How long it takes, in words. Set beside the title, not buried in the body. */
+  cost: string;
   body: string;
   primary?: boolean;
   disabled?: boolean;
@@ -1043,18 +1119,44 @@ function Choice({
       haptic="press"
       activeScale={0.98}
       accessibilityRole="button"
-      accessibilityLabel={`${title}. ${body}`}
+      accessibilityLabel={`${title}, ${cost}. ${body}`}
       style={StyleSheet.flatten([styles.choice, primary ? styles.choicePrimary : null])}
     >
-      <View style={[styles.choiceIcon, primary ? styles.choiceIconPrimary : null]}>
-        <Ionicons name={icon} size={19} color={primary ? '#f7f5ff' : colors.fgSoft} />
-      </View>
+      <WallGlyph auto={auto} />
       <View style={styles.choiceText}>
-        <Text variant="subhead">{title}</Text>
+        <View style={styles.choiceTitle}>
+          <Text variant="subhead">{title}</Text>
+          <Text variant="caption" color={colors.fgMute}>
+            {cost}
+          </Text>
+        </View>
         <Text variant="caption">{body}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={17} color={colors.fgMute} />
     </PressableScale>
+  );
+}
+
+/**
+ * A room, four centimetres wide: back wall, return wall, floor.
+ *
+ * `auto` washes the back wall the way the mask studio washes a detected
+ * surface; without it the wall is a dashed trace with two corner handles, the
+ * way it looks while somebody is marking it by hand. Same colours as the real
+ * thing, so the picture on the button is a picture of what the button does.
+ */
+function WallGlyph({ auto }: { auto?: boolean }) {
+  return (
+    <View style={styles.glyph}>
+      <View style={[styles.glyphWall, auto ? styles.glyphWallAuto : styles.glyphWallManual]} />
+      {auto ? null : (
+        <>
+          <View style={[styles.glyphHandle, styles.glyphHandleTL]} />
+          <View style={[styles.glyphHandle, styles.glyphHandleBR]} />
+        </>
+      )}
+      <View style={styles.glyphReturn} />
+      <View style={styles.glyphFloor} />
+    </View>
   );
 }
 
@@ -1124,16 +1226,54 @@ const styles = StyleSheet.create({
     backgroundColor: colors.glass,
   },
   choicePrimary: { borderColor: alpha(colors.accent, 0.45), backgroundColor: colors.glassStrong },
-  choiceIcon: {
-    width: 40,
+  choiceText: { flex: 1, gap: 3 },
+  choiceTitle: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.sm },
+  /* The little room. See `WallGlyph`. */
+  glyph: {
+    width: 52,
     height: 40,
     borderRadius: radius.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: alpha(colors.fg, 0.06),
+    backgroundColor: alpha(colors.fg, 0.05),
+    borderWidth: hairline,
+    borderColor: colors.glassEdgeSoft,
   },
-  choiceIconPrimary: { backgroundColor: colors.accent },
-  choiceText: { flex: 1, gap: 3 },
+  glyphWall: { position: 'absolute', left: 6, top: 6, right: 19, bottom: 12, borderRadius: 2 },
+  glyphWallAuto: {
+    backgroundColor: alpha(colors.mark, 0.45),
+    borderWidth: hairline,
+    borderColor: colors.markEdge,
+  },
+  glyphWallManual: {
+    borderWidth: hairline,
+    borderStyle: 'dashed',
+    borderColor: alpha(colors.fg, 0.55),
+    // Square, because Android drops the dashes on a rounded border and the
+    // trace would come back as a plain rectangle — which is what the filled
+    // one already is.
+    borderRadius: 0,
+  },
+  glyphHandle: { position: 'absolute', width: 4, height: 4, backgroundColor: colors.onPhoto },
+  glyphHandleTL: { left: 4, top: 4 },
+  glyphHandleBR: { right: 17, bottom: 10 },
+  /** The wall that turns the corner — always plain, it is not what is being marked. */
+  glyphReturn: {
+    position: 'absolute',
+    right: 6,
+    top: 10,
+    width: 10,
+    bottom: 12,
+    borderRadius: 2,
+    backgroundColor: alpha(colors.fg, 0.11),
+  },
+  glyphFloor: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    bottom: 6,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: alpha(colors.fg, 0.08),
+  },
   chipRow: { gap: spacing.sm, paddingVertical: spacing.xs },
   chip: {
     flexDirection: 'row',
@@ -1146,8 +1286,26 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.accentGhost, borderColor: colors.accent },
   chipIdle: { backgroundColor: colors.glass, borderColor: colors.glassEdgeSoft },
-  chipDashed: { backgroundColor: 'transparent', borderColor: alpha(colors.accentSoft, 0.4) },
-  chipDot: { width: 14, height: 14, borderRadius: 7, borderWidth: hairline, borderColor: colors.rule },
+  /** The "Edit" chip at the end of the strip: an outline, not a surface. */
+  chipGhost: { backgroundColor: 'transparent', borderColor: alpha(colors.accentSoft, 0.4) },
+  /** A paint chip, not a dot: the corner of a shade card. */
+  chipSwatch: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    borderWidth: hairline,
+    borderColor: colors.rule,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  chipSwatchBare: { backgroundColor: 'transparent', borderColor: alpha(colors.fg, 0.3) },
+  chipSwatchStrike: {
+    width: 22,
+    height: hairline,
+    backgroundColor: alpha(colors.fg, 0.3),
+    transform: [{ rotate: '-45deg' }],
+  },
   summary: { gap: spacing.xs },
   summaryRow: {
     flexDirection: 'row',
@@ -1160,18 +1318,39 @@ const styles = StyleSheet.create({
     borderColor: colors.glassEdgeSoft,
     backgroundColor: colors.glass,
   },
-  summaryDot: { width: 10, height: 10, borderRadius: 5 },
-  summaryLabel: { flex: 1 },
+  /** The run from a label to its count, the way a contents page sets one. */
+  summaryLead: { flex: 1, height: hairline, backgroundColor: alpha(colors.fg, 0.12) },
+  summarySwatches: { flexDirection: 'row', gap: 3 },
+  summarySwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+    borderWidth: hairline,
+    borderColor: colors.rule,
+  },
   actions: { gap: spacing.sm },
-  // The dock reads as one object below the photo, not three loose sections.
+  /**
+   * The dock reads as one object below the photo, not three loose sections —
+   * and as a tool rather than as content.
+   *
+   * It used to be another 20pt glass card, which is what every other block on
+   * every other screen is, so the thing that changes the wall looked like the
+   * thing that describes it. This is the app's own panel ground at the tight
+   * chrome radius the shape scale reserves for exactly this: a near-solid
+   * instrument sitting under the room, lit along its top edge.
+   */
   dock: {
     gap: spacing.md,
     padding: spacing.md,
-    borderRadius: radius.card,
-    backgroundColor: colors.glass,
+    borderRadius: radius.cardTight,
+    backgroundColor: colors.panel,
     borderWidth: hairline,
     borderColor: colors.glassEdgeSoft,
+    borderTopColor: colors.glassEdge,
+    ...elevation.low,
   },
+  dockHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dockTarget: { flex: 1 },
   cardBody: { marginTop: spacing.xs },
   cardAction: { marginTop: spacing.md },
   sheet: { gap: spacing.sm },

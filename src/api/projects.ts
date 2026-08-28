@@ -28,8 +28,23 @@ export interface CreateProjectInput {
   notes?: string;
 }
 
-/** What the backend calls a region's category. MANUAL is the catch-all. */
-export type RegionCategory = 'MAIN_WALL' | 'ACCENT_WALL' | 'OTHER_WALL' | 'TRIM' | 'MANUAL';
+/**
+ * What the backend calls a region's category. MANUAL is the catch-all.
+ *
+ * Left open the way `ProjectStatus` is, because the server owns this enum and
+ * already sends values that were not listed here — CEILING among them, which
+ * the room summary has always grouped and this union has always rejected.
+ * Anything unrecognised travels through untouched rather than being forced
+ * into one of the names the phone happens to know.
+ */
+export type RegionCategory =
+  | 'MAIN_WALL'
+  | 'ACCENT_WALL'
+  | 'OTHER_WALL'
+  | 'CEILING'
+  | 'TRIM'
+  | 'MANUAL'
+  | (string & {});
 
 /** A mask the user drew by hand, ready to save as a region. */
 export interface CustomMaskInput {

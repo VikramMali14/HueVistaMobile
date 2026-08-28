@@ -43,10 +43,10 @@ const bg: Record<Variant, string> = {
 };
 
 const fg: Record<Variant, string> = {
-  primary: '#ffffff',
+  primary: colors.onFill,
   secondary: colors.fg,
   ghost: colors.accentSoft,
-  danger: '#f7f5ff',
+  danger: colors.onFill,
   outline: colors.fg,
 };
 

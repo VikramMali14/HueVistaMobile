@@ -7,7 +7,7 @@ import { shopCombosApi, type MatchedShade, type RecommendationResponse, type Sha
 import { shadeDisplay } from '../shades/shadeCodes';
 import { useShadeCodeScheme } from '../account/queries';
 import { useSession } from '../auth';
-import type { Shade } from '../shades/types';
+import { hexOnlyShade, isCatalogueShade, type Shade } from '../shades/types';
 
 export interface SuggestPanelProps {
   loading: boolean;
@@ -20,6 +20,15 @@ export interface SuggestPanelProps {
   disabled?: boolean;
 }
 
+/**
+ * A suggested colour, as something the rest of the app can hold.
+ *
+ * The model returns a hex per role and, where it found one, the catalogue shade
+ * nearest to it. Only the second kind has a code; the first used to be given
+ * the em dash this panel prints under a swatch, which then travelled as a real
+ * shade code to `PUT /projects/{id}/regions` and into "Recently used". A
+ * colour with no product behind it now says so — see `isCatalogueShade`.
+ */
 function toShade(hex?: string | null, matched?: MatchedShade | null, roleLabel?: string): Shade | null {
   if (matched?.hexCode) {
     return {
@@ -30,7 +39,7 @@ function toShade(hex?: string | null, matched?: MatchedShade | null, roleLabel?:
       family: matched.shadeFamily ?? '',
     };
   }
-  if (hex) return { code: '—', name: roleLabel ?? 'Colour', hex, brand: '', family: '' };
+  if (hex) return hexOnlyShade(hex, roleLabel ?? 'Colour');
   return null;
 }
 
@@ -76,13 +85,11 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
                     <Swatch
                       key={`${combo.id}-${j}`}
                       label={j === 0 ? 'Main' : j === 1 ? 'Accent' : 'Trim'}
-                      shade={{
-                        code: s.code ?? '—',
-                        name: s.name ?? s.code ?? 'Colour',
-                        hex: s.hex,
-                        brand: '',
-                        family: '',
-                      }}
+                      shade={
+                        s.code
+                          ? { code: s.code, name: s.name ?? s.code, hex: s.hex, brand: '', family: '' }
+                          : hexOnlyShade(s.hex, s.name ?? 'Colour')
+                      }
                       scheme={scheme}
                       disabled={disabled}
                       onApply={onApply}
@@ -120,7 +127,7 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
             </Text>
             <Button
               label="Suggest palettes"
-              icon={<Ionicons name="sparkles" size={16} color="#fff" />}
+              icon={<Ionicons name="sparkles" size={16} color={colors.onFill} />}
               fullWidth
               onPress={onAsk}
               disabled={disabled}
@@ -197,7 +204,7 @@ function Swatch({
         {label}
       </Text>
       <Text variant="caption" numberOfLines={1} style={styles.swatchName}>
-        {shade.code !== '—' ? display.code : shade.hex.toUpperCase()}
+        {isCatalogueShade(shade) ? display.code : shade.hex.toUpperCase()}
       </Text>
     </PressableScale>
   );

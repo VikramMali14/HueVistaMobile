@@ -64,9 +64,14 @@ export interface ColourPanelProps {
  * the thing is watching the wall change.
  *
  * So the catalogue lives under the photo now. Company, search, depth and family
- * narrow it in place; the grid grows on demand rather than scrolling inside a
- * scroll (nested vertical scrolling on a phone is a fight between two lists,
- * and the user loses it).
+ * narrow it behind one button rather than stacking four controls above the
+ * colours, and the grid scrolls inside a bounded box — see `GRID_MAX_HEIGHT`.
+ *
+ * That box is the reason the nesting is safe. Two vertical scrolls on a phone
+ * are normally a fight the user loses, but the outer one belongs to a screen
+ * whose photo is pinned above it and whose remaining content is a few rows
+ * tall, so there is no long page for the grid to steal a flick from; the grid
+ * is the only thing here with a real distance to travel.
  */
 export function ColourPanel({ onPick, selectedCode, disabled }: ColourPanelProps) {
   const allowed = useAllowedBrands();

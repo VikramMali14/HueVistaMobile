@@ -70,7 +70,7 @@ export function FinderPanel({ picking, onTogglePicking, pickedHex, onApply, disa
           <Ionicons
             name={picking ? 'close' : 'eyedrop-outline'}
             size={16}
-            color={picking ? colors.fg : '#fff'}
+            color={picking ? colors.fg : colors.onFill}
           />
         }
         onPress={onTogglePicking}
