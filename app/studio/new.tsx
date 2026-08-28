@@ -345,8 +345,8 @@ export default function NewRoom() {
         )}
         {phase === 'uploading' ? (
           <View style={styles.busy}>
-            <ActivityIndicator color="#fff" />
-            <Text variant="label" color="#fff">
+            <ActivityIndicator color={colors.onPhoto} />
+            <Text variant="label" color={colors.onPhoto}>
               Checking your photo…
             </Text>
           </View>
@@ -359,7 +359,7 @@ export default function NewRoom() {
             label="Take a photo"
             size="lg"
             fullWidth
-            icon={<Ionicons name="camera" size={18} color="#fff" />}
+            icon={<Ionicons name="camera" size={18} color={colors.onFill} />}
             onPress={() => pick('camera')}
           />
           <View style={styles.altRow}>

@@ -95,12 +95,12 @@ export function BeforeAfter({ photo, layers, width, height, style }: BeforeAfter
       </View>
 
       <View style={[styles.tag, styles.tagLeft]} pointerEvents="none">
-        <Text variant="eyebrow" color="#eae8e3">
+        <Text variant="eyebrow" color={colors.onPhoto}>
           Before
         </Text>
       </View>
       <View style={[styles.tag, styles.tagRight]} pointerEvents="none">
-        <Text variant="eyebrow" color="#eae8e3">
+        <Text variant="eyebrow" color={colors.onPhoto}>
           After
         </Text>
       </View>
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 2,
     marginLeft: -1,
-    backgroundColor: alpha('#eae8e3', 0.92),
+    backgroundColor: alpha(colors.onPhoto, 0.92),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: colors.scrim,
     borderWidth: hairline,
-    borderColor: alpha('#eae8e3', 0.42),
+    borderColor: alpha(colors.onPhoto, 0.42),
   },
   tag: {
     position: 'absolute',
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.scrim,
     borderWidth: hairline,
-    borderColor: alpha('#eae8e3', 0.2),
+    borderColor: alpha(colors.onPhoto, 0.2),
   },
   tagLeft: { left: spacing.md },
   tagRight: { right: spacing.md },

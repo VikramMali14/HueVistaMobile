@@ -142,7 +142,7 @@ export default function Home() {
               </Text>
             </View>
             <View style={styles.ctaGo}>
-              <Ionicons name="arrow-forward" size={19} color="#f7f5ff" />
+              <Ionicons name="arrow-forward" size={19} color={colors.onFill} />
             </View>
           </Card>
         ) : (
@@ -152,7 +152,7 @@ export default function Home() {
               <Text variant="caption">Photograph a wall, pick a shade</Text>
             </View>
             <View style={styles.ctaGo}>
-              <Ionicons name="arrow-forward" size={19} color="#f7f5ff" />
+              <Ionicons name="arrow-forward" size={19} color={colors.onFill} />
             </View>
           </Card>
         )}

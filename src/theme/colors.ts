@@ -55,6 +55,42 @@ export const colors = {
   /** Panel ground for a sheet that sits over a photograph. */
   panel: 'rgba(10,9,15,0.90)',
   panelSolid: 'rgba(12,11,20,0.97)',
+
+  /* ---- Ink on top of something else --------------------------------------
+   * Two near-whites, each with one job, because the app had five: '#fff',
+   * '#ffffff', '#f7f5ff', '#eae8e3' and the token `fg`, scattered through the
+   * studio with nothing to say which belonged where.
+   */
+  /** On a filled accent or danger button. Pure white, for the contrast note in Button. */
+  onFill: '#ffffff',
+  /** Over a photograph or a scrim — the page ivory, lifted so it holds against a lit wall. */
+  onPhoto: '#f4f2ee',
+
+  /* ---- Marking a wall ----------------------------------------------------
+   * The mask studio draws these on top of a photograph of somebody's room, so
+   * they are chosen for separation from what rooms are actually made of —
+   * warm neutrals, wood, white — and not from a UI palette.
+   *
+   * They were '#3b82f6' and '#ef4444': the default blue-500 / red-500 pair,
+   * which belongs to no part of this product, fought every other colour on the
+   * screen, and is the exact hue pair red-green colour blindness collapses.
+   * Violet is the brand's own hue and the one furthest from a room's neutrals;
+   * brick is the palette's danger red, and the two stay apart under
+   * deuteranopia because they differ in lightness as well as in hue.
+   */
+  /**
+   * The surface being added, as a wash over the photo.
+   *
+   * Currently the same value as `accentSoft`, and named separately on purpose:
+   * one is the accent as words on a dark page, this is a wash over a
+   * photograph. They answer to different constraints and either may move
+   * without the other.
+   */
+  mark: '#a080ff',
+  /** Its outline — a step brighter, so a 2px edge still reads over a lit wall. */
+  markEdge: '#c9b4ff',
+  /** The surface being rubbed out. */
+  erase: '#c2402a',
 } as const;
 
 export type ColorToken = keyof typeof colors;

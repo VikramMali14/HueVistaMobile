@@ -27,6 +27,19 @@ const MODE_OPTIONS: readonly { value: MarkMode; label: string }[] = [
   { value: 'draw', label: 'Freehand' },
 ];
 
+/**
+ * Tap-to-detect is not offered while redrawing.
+ *
+ * It looks like it should be — it is the fastest way to mark a wall, and the
+ * one most likely to fix a bad outline. But it goes through `segmentPoint`,
+ * which CREATES a region; there is no "detect into this region" on the server.
+ * So a customer who opened this sheet to fix a mask, then tapped the wall, got
+ * a second region beside the wrong one they came to repair, silently, with the
+ * bad mask still in place. The two by-hand modes are the ones that can replace
+ * an outline, so those are the ones a redraw gets.
+ */
+const REDRAW_MODE_OPTIONS = MODE_OPTIONS.filter((m) => m.value !== 'detect');
+
 /** Zoom limits. Below 1 the photo would float inside its own frame. */
 const MIN_SCALE = 1;
 const MAX_SCALE = 6;
@@ -93,13 +106,10 @@ function touchDistance(touches: readonly { pageX: number; pageY: number }[]): nu
 const CATEGORIES: readonly { value: RegionCategory; label: string }[] = [
   { value: 'MAIN_WALL', label: 'Main wall' },
   { value: 'ACCENT_WALL', label: 'Accent wall' },
+  { value: 'CEILING', label: 'Ceiling' },
   { value: 'TRIM', label: 'Trim' },
   { value: 'MANUAL', label: 'Other' },
 ];
-
-/** Selection blue and removal red — the two colours that read against any room. */
-const SELECT_BLUE = '#3b82f6';
-const REMOVE_RED = '#ef4444';
 
 /** Minimum finger travel (in normalized units) before another point is kept. */
 const MIN_STEP = 0.004;
@@ -116,8 +126,12 @@ export interface MaskStudioSheetProps {
    * The old mask is replaced, not edited — a stored PNG cannot be turned back
    * into the outline that made it, so this is a fresh trace of the same wall,
    * which is what fixes an AI mask that took half a pillar.
+   *
+   * `category` comes along because the save sends one whether or not anybody
+   * chose it. Without it every redraw wrote back this sheet's default, so
+   * repairing a ceiling's outline quietly reclassified it as a main wall.
    */
-  editTarget?: { id: number; label: string } | null;
+  editTarget?: { id: number; label: string; category?: RegionCategory | null } | null;
   /** A wall was created or refined; the screen refetches and selects it. */
   onSaved: (region: Region) => void;
 }
@@ -231,6 +245,66 @@ export function MaskStudioSheet({
    */
   const existingMask = useAuthedSkImage(editTarget ? regionMaskUrl(projectId, editTarget.id) : null);
   const [showExisting, setShowExisting] = useState(true);
+
+  /**
+   * Re-seed the answers that belong to one opening of this sheet.
+   *
+   * The Modal is mounted for the life of the screen and only toggled by
+   * `visible`, so everything chosen inside it survives being closed. Most of
+   * that is worth keeping — somebody tracing a third wall by hand should not
+   * have to pick Freehand a third time — but two parts of it were wrong:
+   *
+   *  - A redraw could open on Tap, left behind by an earlier visit. Tap
+   *    creates a region (see `REDRAW_MODE_OPTIONS`), so the sheet would have
+   *    been showing a mode that cannot do the job it was opened for.
+   *  - The category was whatever the last opening ended on, and the save sends
+   *    one every time. A redraw has to start from the surface's own category
+   *    or it silently reclassifies it; and a category borrowed from a redrawn
+   *    ceiling must not then become the default for the next wall marked from
+   *    scratch.
+   *
+   * The key deliberately survives the sheet closing, which is what lets those
+   * two cases be told apart from simply reopening on the same thing. Reading
+   * it during render rather than from an effect means the first frame of an
+   * opening is already correct — there is no flash of the last visit's answers.
+   */
+  const openKey = editTarget ? `edit:${editTarget.id}` : 'new';
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (visible && openKey !== seededFor) {
+    const afterRedraw = seededFor?.startsWith('edit:') ?? false;
+    setSeededFor(openKey);
+    setErasing(false);
+    setShowExisting(true);
+    if (editTarget) {
+      setCategory(editTarget.category ?? 'MAIN_WALL');
+      setMode((m) => (m === 'detect' ? 'points' : m));
+    } else if (afterRedraw) {
+      setCategory('MAIN_WALL');
+    }
+  }
+
+  /** Detection creates a region, so it is not a way to replace one — see above. */
+  const modeOptions = editTarget ? REDRAW_MODE_OPTIONS : MODE_OPTIONS;
+
+  /**
+   * The category chips, plus whatever this surface is already filed as when
+   * that is not one of them.
+   *
+   * The server's vocabulary is wider than the five words worth offering to a
+   * customer marking a wall — OTHER_WALL among them — and a redraw arrives
+   * holding whichever one the surface already has. Without this the sheet
+   * would show five chips with none of them lit, which reads as broken; with
+   * it, the surface's own name is on screen and selected, and picking another
+   * is a deliberate reclassification rather than the only way out of a row
+   * that looks stuck.
+   */
+  const categoryOptions = useMemo(
+    () =>
+      CATEGORIES.some((c) => c.value === category)
+        ? CATEGORIES
+        : [...CATEGORIES, { value: category, label: prettyCategory(category) }],
+    [category],
+  );
 
   function reset() {
     setStrokes([]);
@@ -583,7 +657,7 @@ export function MaskStudioSheet({
             this area, because there is no scroll here to claim it first. */}
         <View style={styles.fixed}>
           <Segmented
-            options={MODE_OPTIONS}
+            options={modeOptions}
             value={mode}
             onChange={(m) => {
               setMode(m);
@@ -650,7 +724,7 @@ export function MaskStudioSheet({
                       <Path
                         key={p.key}
                         path={p.path}
-                        color={p.mode === 'add' ? SELECT_BLUE : REMOVE_RED}
+                        color={p.mode === 'add' ? colors.mark : colors.erase}
                         style="fill"
                         opacity={0.42}
                       />
@@ -659,7 +733,7 @@ export function MaskStudioSheet({
                       <Path
                         key={`${p.key}-edge`}
                         path={p.path}
-                        color={p.mode === 'add' ? SELECT_BLUE : REMOVE_RED}
+                        color={p.mode === 'add' ? colors.markEdge : colors.erase}
                         style="stroke"
                         strokeWidth={2 / view.scale}
                       />
@@ -675,7 +749,7 @@ export function MaskStudioSheet({
                             cx={p.x * canvas.width}
                             cy={p.y * canvas.height}
                             r={HANDLE_R / view.scale}
-                            color={i === 0 ? '#fff' : SELECT_BLUE}
+                            color={i === 0 ? colors.onPhoto : colors.markEdge}
                           />
                         ))
                       : null}
@@ -684,8 +758,8 @@ export function MaskStudioSheet({
 
                 {busy ? (
                   <View style={styles.busy}>
-                    <ActivityIndicator color="#fff" />
-                    <Text variant="label" color="#fff" style={styles.busyLabel}>
+                    <ActivityIndicator color={colors.onPhoto} />
+                    <Text variant="label" color={colors.onPhoto} style={styles.busyLabel}>
                       {busy}
                     </Text>
                   </View>
@@ -773,11 +847,15 @@ export function MaskStudioSheet({
             </PressableScale>
           </View>
 
-          {mode !== 'detect' && !editTarget ? (
+          {/* Shown while redrawing as well as while marking. The save sends a
+              category either way, so the one time it is most likely to be
+              wrong — a repair of a surface somebody else's model classified —
+              is exactly the time to be able to correct it. */}
+          {mode !== 'detect' ? (
             <View style={styles.group}>
               <Text variant="eyebrow">What is it?</Text>
               <View style={styles.categories}>
-                {CATEGORIES.map((c) => (
+                {categoryOptions.map((c) => (
                   <Chip
                     key={c.value}
                     label={c.label}
@@ -837,6 +915,12 @@ export function MaskStudioSheet({
       </View>
     </Modal>
   );
+}
+
+/** A server category the chips do not name, as words: OTHER_WALL → "Other wall". */
+function prettyCategory(value: string): string {
+  const words = value.replace(/_/g, ' ').trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Other';
 }
 
 /** What went wrong detecting a wall, in a sentence worth showing. */

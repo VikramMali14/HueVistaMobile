@@ -270,7 +270,7 @@ export default function BoardRoute() {
           size="lg"
           fullWidth
           loading={recording}
-          icon={<Ionicons name="document-text-outline" size={18} color="#fff" />}
+          icon={<Ionicons name="document-text-outline" size={18} color={colors.onFill} />}
           onPress={record}
         />
       </Screen>
@@ -356,7 +356,7 @@ export default function BoardRoute() {
           size="lg"
           fullWidth
           loading={savingImage}
-          icon={<Ionicons name="download-outline" size={18} color="#fff" />}
+          icon={<Ionicons name="download-outline" size={18} color={colors.onFill} />}
           onPress={saveToPhone}
         />
         <Button
