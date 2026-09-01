@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import * as WebBrowser from 'expo-web-browser';
 import { authApi, LoginBody, RegisterBody, setAuthHooks, ApiError } from '../api';
 import { GOOGLE_AUTH_URL, OAUTH_REDIRECT_URI } from '../api/config';
+import { fragmentParams } from '../api/fragment';
 import { AuthResponse, UserInfo, UserRole } from '../api/schemas';
 import { tokenStore } from './tokenStore';
 
@@ -175,19 +176,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
-}
-
-/**
- * The `#a=b&c=d` half of a redirect URL.
- *
- * The code comes back in the fragment rather than the query deliberately: a
- * fragment is never sent to a server, so it stays out of access logs and
- * proxies on the way. `URL` in Hermes does not parse a custom scheme reliably,
- * so this reads the string directly.
- */
-function fragmentParams(url: string): URLSearchParams {
-  const hash = url.indexOf('#');
-  return new URLSearchParams(hash === -1 ? '' : url.slice(hash + 1));
 }
 
 export function useSession(): SessionValue {

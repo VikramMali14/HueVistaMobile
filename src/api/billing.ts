@@ -4,10 +4,11 @@ import { apiFetch } from './client';
 /**
  * What a customer's money buys, and what it has already bought.
  *
- * Payment itself stays on the web: Checkout is a Razorpay web flow and the app
- * carries no payment SDK, so every price here is quoted from the server and the
- * purchase hands off to the site rather than inventing a path the app cannot
- * finish. Nothing here quotes a number the backend did not say.
+ * Every price here is quoted from the server; nothing in this file names a
+ * number the backend did not say. Buying now finishes in the app — the order is
+ * created here, Razorpay Checkout runs in a browser session, and the outcome is
+ * verified here (see `src/api/checkout.ts`). What the app still does not carry
+ * is a payment SDK, which is why the sheet itself is a web page.
  *
  * The points rail left with the counter screens — points are a shop's currency
  * and a customer holds none, so quoting a price they would be refused at was
@@ -48,6 +49,29 @@ export const pdfAllowanceSchema = z.object({
 });
 export type PdfAllowance = z.infer<typeof pdfAllowanceSchema>;
 
+/**
+ * A Razorpay order the backend has just created, ready to be opened.
+ *
+ * `amount` is authoritative and derived server-side from the caller's own plan —
+ * the app never names a price, and the screen that shows one shows this.
+ */
+export const razorpayOrderSchema = z.object({
+  orderId: z.string(),
+  amount: z.number(),
+  currency: z.string().default('INR'),
+  razorpayKeyId: z.string(),
+  /** The tier it was priced at — "FREE" when no paid plan covers the account. */
+  pricingPlan: z.string().nullish(),
+});
+export type RazorpayOrder = z.infer<typeof razorpayOrderSchema>;
+
+/** What Razorpay hands back on a successful sheet, sent on for verification. */
+export interface VerifyPayment {
+  orderId: string;
+  paymentId: string;
+  signature: string;
+}
+
 export const billingApi = {
   /** Every tier, with what an extra project costs on each. Public. */
   plans(): Promise<Plan[]> {
@@ -57,6 +81,25 @@ export const billingApi = {
   /** Colour-board allowance for whoever is asking. */
   pdfAllowance(): Promise<PdfAllowance> {
     return apiFetch('/billing/pdf-allowance').then((d) => pdfAllowanceSchema.parse(d));
+  },
+
+  /**
+   * Open an order for one more room, at whatever the caller's own plan charges.
+   * The count is the only thing sent; the price comes back.
+   */
+  createProjectOrder(credits = 1): Promise<RazorpayOrder> {
+    return apiFetch(`/billing/projects/order?credits=${encodeURIComponent(credits)}`, {
+      method: 'POST',
+    }).then((d) => razorpayOrderSchema.parse(d));
+  },
+
+  /**
+   * Hand the signed result back. The backend re-checks the signature against its
+   * own record of the order before it grants anything, and refuses a replay, so
+   * one payment buys exactly one room however many times this is called.
+   */
+  verifyProjectPurchase(payment: VerifyPayment): Promise<void> {
+    return apiFetch('/billing/projects/verify', { method: 'POST', json: payment }).then(() => undefined);
   },
 };
 

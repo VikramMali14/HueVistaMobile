@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { apiFetch } from './client';
 import { boardShadeSchema } from './boards';
+import { razorpayOrderSchema, type RazorpayOrder, type VerifyPayment } from './billing';
 
 /**
  * The AI image wallet, and the shelf of images it has paid for.
@@ -70,6 +71,25 @@ export const aiCreditsApi = {
   /** Balance, today's price and what an image costs. */
   summary(): Promise<AiCreditSummary> {
     return apiFetch('/billing/ai-credits').then((d) => aiCreditSummarySchema.parse(d));
+  },
+
+  /**
+   * Open an order for `credits` images. Only the count is sent — the amount is
+   * derived server-side at today's price and discount, so a stale price on
+   * screen cannot become a stale price charged.
+   */
+  createOrder(credits: number): Promise<RazorpayOrder> {
+    return apiFetch('/billing/ai-credits/order', {
+      method: 'POST',
+      json: { credits },
+    }).then((d) => razorpayOrderSchema.parse(d));
+  },
+
+  /** Hand the signed result back; returns the refreshed wallet. Replay-safe. */
+  verifyPurchase(payment: VerifyPayment): Promise<AiCreditSummary> {
+    return apiFetch('/billing/ai-credits/verify', { method: 'POST', json: payment }).then((d) =>
+      aiCreditSummarySchema.parse(d),
+    );
   },
 };
 

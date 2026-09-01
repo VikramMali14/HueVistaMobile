@@ -5,7 +5,9 @@
  * has gone with those screens — the app ships one role now, and an export here
  * is a promise that some customer screen has a use for it.
  */
-export { API_ORIGIN, API_BASE, WEB_ORIGIN, resolveImageUrl, isApiOriginUrl, webUrl } from './config';
+export { API_ORIGIN, API_BASE, WEB_ORIGIN, resolveImageUrl, isApiOriginUrl, webUrl, checkoutUrl, PAY_REDIRECT_URI } from './config';
+export { buyProject, buyAiCredits } from './checkout';
+export type { CheckoutResult } from './checkout';
 export { apiFetch, setAuthHooks } from './client';
 export type { RequestOptions, AuthHooks } from './client';
 export { ApiError, userMessage, hasCode, API_CODES } from './errors';
@@ -34,7 +36,7 @@ export type { RecommendationResponse, ColorCombo, MatchedShade } from './recomme
 export { accessCodesApi } from './accessCodes';
 export { accountApi } from './account';
 export { billingApi, formatPaise, planSchema, pdfAllowanceSchema } from './billing';
-export type { Plan, PdfAllowance } from './billing';
+export type { Plan, PdfAllowance, RazorpayOrder, VerifyPayment } from './billing';
 export { boardsApi, RENDER_STATUSES } from './boards';
 export type {
   BoardShade,
