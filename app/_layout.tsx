@@ -42,12 +42,19 @@ function useAuthGate() {
     if (status === 'loading') return;
     const root = segments[0];
     const inAuthGroup = root === '(auth)';
+    // Android hands a finished Google sign-in back as a deep link to
+    // /sign-in/callback while the code is still being exchanged. Bouncing that
+    // to /welcome would show the sign-out screen to someone who just signed in,
+    // so it waits — and only for as long as the exchange is unresolved: the
+    // moment it succeeds the rule below routes it into the app, and the screen
+    // itself gives up to /welcome if it never does.
+    const inOAuthCallback = root === 'sign-in';
 
     if (status === 'unauthenticated') {
-      if (!inAuthGroup) router.replace('/welcome');
+      if (!inAuthGroup && !inOAuthCallback) router.replace('/welcome');
       return;
     }
-    if (inAuthGroup || root === undefined) router.replace('/home');
+    if (inAuthGroup || inOAuthCallback || root === undefined) router.replace('/home');
   }, [status, segments, router]);
 }
 

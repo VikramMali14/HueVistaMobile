@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Text, Serif, Button, PressableScale, Aurora } from '../../src/components';
+import { Text, Serif, Button, PressableScale, Aurora, GoogleButton } from '../../src/components';
+import { usePopularShades } from '../../src/shades/queries';
 import {
   colors,
   spacing,
@@ -23,24 +24,25 @@ import {
  * load. Shipping it as the first thing anyone sees would open the app on a
  * broken-looking rectangle.
  *
- * So the hero is the product itself: real catalogue colours at a size worth
- * judging, dealt out like chips fanned across a counter. It is honest — every
- * one of these is a shade the app can actually put on a wall — it needs no
- * photography, and it says "paint" in the first half second.
+ * So the hero is the product itself: catalogue colours at a size worth judging,
+ * dealt out like chips fanned across a counter. It needs no photography, and it
+ * says "paint" in the first half second.
  *
- * Replace it with a real room photograph the moment there is one worth using;
- * `HERO` is the only thing to change.
+ * The nine colours are the FIRST NINE OF THE REAL CATALOGUE, read from the same
+ * public endpoint the shade library uses. They used to be nine hex values typed
+ * into this file, which meant the one screen claiming "this is what we sell" was
+ * the one screen showing colours nobody stocks. `GROUND` is what is painted
+ * while that request is in flight or when the phone is offline — it is scenery,
+ * never labelled and never tappable, so it makes no claim to be a shade.
+ *
+ * Replace the whole thing with a real room photograph the moment there is one
+ * worth using.
  */
-const HERO = [
-  { hex: '#4d5b83', span: 2 },
-  { hex: '#e9d6b0', span: 1 },
-  { hex: '#9fb79a', span: 1 },
-  { hex: '#c06a4d', span: 1 },
-  { hex: '#2f6f6a', span: 2 },
-  { hex: '#d8c3a5', span: 1 },
-  { hex: '#7c5cff', span: 1 },
-  { hex: '#c9cdc7', span: 2 },
-  { hex: '#c98b86', span: 1 },
+const SPANS = [2, 1, 1, 1, 2, 1, 1, 2, 1] as const;
+
+const GROUND = [
+  '#2a2734', '#332f3f', '#26232f', '#3a3547', '#2f2b3a',
+  '#241f2d', '#37324a', '#2b2735', '#302c3d',
 ] as const;
 
 /**
@@ -49,12 +51,25 @@ const HERO = [
  * This is one of the three places the italic serif is spent (see SERIF_BUDGET
  * in theme/typography.ts). It gets the word "chosen", which is the promise.
  *
- * Two ways in, in the order they are actually used: most people arrive holding
- * a slip of paper from a paint shop, so the code goes first and carries the lit
- * button. "Just looking" is real and stays, quietly.
+ * Two ways in, and both are an account: an e-mail and a password, or Google in
+ * one tap. Signing in carries the lit button — it is the same account the
+ * website uses, so anyone who has been here before is one tap from their rooms.
+ *
+ * A shop code used to open a third door here, provisioning a passwordless
+ * account straight off a slip of paper. It no longer signs anyone in: a code is
+ * what a shop's allowance rides on, not an identity, and it is now redeemed from
+ * inside the app against an account that already exists. See app/redeem-code.
+ *
+ * "Just looking" is real and stays, quietly.
  */
 export default function Welcome() {
   const router = useRouter();
+  // Public endpoint — this screen is the one place in the app with no session.
+  const catalogue = usePopularShades(SPANS.length);
+  const hero = SPANS.map((span, i) => ({
+    span,
+    hex: catalogue.data?.[i]?.hexCode ?? GROUND[i],
+  }));
 
   return (
     <View style={styles.root}>
@@ -62,8 +77,8 @@ export default function Welcome() {
 
       <View style={styles.hero}>
         <View style={styles.heroGrid}>
-          {HERO.map((band, i) => (
-            <Band key={band.hex} hex={band.hex} span={band.span} index={i} />
+          {hero.map((band, i) => (
+            <Band key={i} hex={band.hex} span={band.span} index={i} />
           ))}
         </View>
         {/* The colour runs out under the copy rather than stopping at an edge,
@@ -88,19 +103,8 @@ export default function Welcome() {
         </View>
 
         <View style={styles.actions}>
-          <Button
-            label="I have a code from my shop"
-            size="lg"
-            fullWidth
-            onPress={() => router.push('/redeem-code')}
-          />
-          <Button
-            label="Sign in"
-            variant="secondary"
-            size="lg"
-            fullWidth
-            onPress={() => router.push('/sign-in')}
-          />
+          <Button label="Sign in" size="lg" fullWidth onPress={() => router.push('/sign-in')} />
+          <GoogleButton />
           <PressableScale
             onPress={() => router.push('/browse-shades')}
             haptic="tap"

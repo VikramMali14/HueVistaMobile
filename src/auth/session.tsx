@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
 import { authApi, LoginBody, RegisterBody, setAuthHooks, ApiError } from '../api';
+import { GOOGLE_AUTH_URL, OAUTH_REDIRECT_URI } from '../api/config';
 import { AuthResponse, UserInfo, UserRole } from '../api/schemas';
 import { tokenStore } from './tokenStore';
 
@@ -12,11 +14,11 @@ interface SessionValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (body: RegisterBody) => Promise<void>;
   /**
-   * Adopt a session the backend has already minted — the access-code redeem
-   * flow, where the customer never had an account to sign into and the redeem
-   * response IS the session.
+   * Continue with Google. Resolves `false` when the user backed out of the
+   * browser sheet — a dismissal is not a failure and must not raise an error on
+   * the sign-in screen.
    */
-  signInWithSession: (res: AuthResponse) => Promise<void>;
+  signInWithGoogle: () => Promise<boolean>;
   signOut: () => Promise<void>;
 }
 
@@ -117,12 +119,36 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [applyAuth],
   );
 
-  const signInWithSession = useCallback(
-    async (res: AuthResponse) => {
-      await applyAuth(res);
-    },
-    [applyAuth],
-  );
+  /**
+   * Continue with Google, via the backend's own OAuth flow.
+   *
+   * `openAuthSessionAsync` is what makes this a sign-in rather than a detour: it
+   * opens the sheet in a browser that shares the system cookie jar (so a phone
+   * already signed in to Google takes one tap), and it closes itself the moment
+   * the redirect hits our scheme, handing the URL straight back here. The
+   * fragment carries a one-minute single-use code, never tokens — the same shape
+   * the website's callback page trades in.
+   */
+  const signInWithGoogle = useCallback(async (): Promise<boolean> => {
+    const result = await WebBrowser.openAuthSessionAsync(GOOGLE_AUTH_URL, OAUTH_REDIRECT_URI);
+    // 'cancel' is the sheet swiped away, 'dismiss' the app coming back without a
+    // redirect. Both mean "changed my mind", and neither is worth an error.
+    if (result.type !== 'success') return false;
+
+    const params = fragmentParams(result.url);
+    const code = params.get('code');
+    if (!code) {
+      throw new ApiError({
+        message:
+          params.get('error') === 'google'
+            ? 'Google could not sign you in. Please try again.'
+            : 'Unexpected sign-in response.',
+        status: 401,
+      });
+    }
+    await applyAuth(await authApi.exchangeOAuthCode(code));
+    return true;
+  }, [applyAuth]);
 
   const signOut = useCallback(async () => {
     try {
@@ -136,11 +162,32 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<SessionValue>(
-    () => ({ status, user, role: user?.role ?? null, signIn, signUp, signInWithSession, signOut }),
-    [status, user, signIn, signUp, signInWithSession, signOut],
+    () => ({
+      status,
+      user,
+      role: user?.role ?? null,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signOut,
+    }),
+    [status, user, signIn, signUp, signInWithGoogle, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+}
+
+/**
+ * The `#a=b&c=d` half of a redirect URL.
+ *
+ * The code comes back in the fragment rather than the query deliberately: a
+ * fragment is never sent to a server, so it stays out of access logs and
+ * proxies on the way. `URL` in Hermes does not parse a custom scheme reliably,
+ * so this reads the string directly.
+ */
+function fragmentParams(url: string): URLSearchParams {
+  const hash = url.indexOf('#');
+  return new URLSearchParams(hash === -1 ? '' : url.slice(hash + 1));
 }
 
 export function useSession(): SessionValue {

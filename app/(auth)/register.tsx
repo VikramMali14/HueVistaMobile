@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Button, Input, BackLink, PressableScale } from '../../src/components';
+import {
+  Screen,
+  Text,
+  Button,
+  Input,
+  BackLink,
+  PressableScale,
+  GoogleButton,
+} from '../../src/components';
 import { colors, spacing } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { userMessage } from '../../src/api';
@@ -10,6 +18,12 @@ import { haptics } from '../../src/haptics';
 /**
  * Customer account creation. Retailers self-provision from the website with shop
  * details; the mobile signup path creates a CUSTOMER account (accountType).
+ *
+ * Google sits below the form rather than above it because this screen is reached
+ * by people who chose to make an account; but it is the same one button as on
+ * sign-in, and it does not care which of the two you tapped — a Google account
+ * that has never been here is created on the spot, and one that has is signed
+ * in. There is no separate "sign up with Google".
  */
 export default function Register() {
   const router = useRouter();
@@ -95,6 +109,14 @@ export default function Register() {
         <Button label="Create account" size="lg" fullWidth loading={busy} disabled={!canSubmit} onPress={onSubmit} />
       </View>
 
+      <View style={styles.divider}>
+        <View style={styles.rule} />
+        <Text variant="eyebrow">or</Text>
+        <View style={styles.rule} />
+      </View>
+
+      <GoogleButton onStart={() => setError(null)} onError={setError} />
+
       <View style={styles.footer}>
         <Text variant="bodySoft">Already have an account? </Text>
         <PressableScale
@@ -116,5 +138,7 @@ const styles = StyleSheet.create({
   content: { gap: spacing.xl, paddingTop: spacing.lg },
   header: { gap: spacing.md },
   form: { gap: spacing.lg },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  rule: { flex: 1, height: 1, backgroundColor: colors.rule },
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
 });

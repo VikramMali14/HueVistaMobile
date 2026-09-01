@@ -38,6 +38,13 @@ export const pdfAllowanceSchema = z.object({
   monthlyLimit: z.number().default(0),
   used: z.number().default(0),
   remaining: z.number().default(0),
+  /**
+   * An allowance with no ceiling. The server sends `Integer.MAX_VALUE` for both
+   * counts in that case and this flag to say what it means — which is exactly
+   * why the flag has to be read: printed raw, the account screen offered
+   * "2147483647 of 2147483647 downloads left this month".
+   */
+  unlimited: z.boolean().default(false),
 });
 export type PdfAllowance = z.infer<typeof pdfAllowanceSchema>;
 

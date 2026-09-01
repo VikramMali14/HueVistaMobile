@@ -43,3 +43,5 @@ export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { BackLink } from './BackLink';
 export type { BackLinkProps } from './BackLink';
+export { GoogleButton } from './GoogleButton';
+export type { GoogleButtonProps } from './GoogleButton';
