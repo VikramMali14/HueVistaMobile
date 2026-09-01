@@ -1,26 +1,34 @@
 import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Text, Button, Input, BackLink, PressableScale } from '../../src/components';
+import {
+  Screen,
+  Text,
+  Button,
+  Input,
+  BackLink,
+  PressableScale,
+  GoogleButton,
+} from '../../src/components';
 import { colors, spacing } from '../../src/theme';
 import { useSession } from '../../src/auth';
 import { userMessage } from '../../src/api';
 import { haptics } from '../../src/haptics';
 
 /**
- * Sign in with an e-mail and a password.
+ * Sign in with an e-mail and a password, or with Google.
  *
- * The design this came from offered three ways in from this screen: a password,
- * "email me a code instead", and Continue with Google. Two of those are not
- * things this product can do. There is no passwordless e-mail login for a
- * customer — `/auth/login/otp` exists but is the second factor on an ADMIN
- * sign-in — and Google needs an OAuth client and a redirect the app has never
- * been configured with, so the button was a promise the build could not keep.
+ * The design this came from offered three ways in: a password, "email me a code
+ * instead", and Continue with Google. The middle one is still not a thing this
+ * product can do — there is no passwordless e-mail login for a customer;
+ * `/auth/login/otp` exists but is the second factor on an ADMIN sign-in — so it
+ * stays out.
  *
- * What the product DOES have is better than either for the case that screen was
- * imagining ("it works on a borrowed handset at the shop"): a shop code
- * provisions an account and returns a session in one step, with no password to
- * invent at a counter. So that is the alternative offered here, and it is real.
+ * Google is real now. The backend has run the flow for the website since launch;
+ * what was missing was somewhere to send the result on a phone, and it now hands
+ * its one-time exchange code back to the app's own scheme. No SDK, no second
+ * OAuth client, and the same account either way — signing in with Google on the
+ * phone lands on the account the same address already owns on the web.
  */
 export default function SignIn() {
   const router = useRouter();
@@ -28,6 +36,9 @@ export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Kept apart from `error`, which is drawn under the password field: a Google
+  // refusal has nothing to do with what was typed there.
+  const [googleError, setGoogleError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const canSubmit = email.trim().length > 0 && password.length > 0 && !busy;
@@ -108,13 +119,14 @@ export default function SignIn() {
         <View style={styles.rule} />
       </View>
 
-      <Button
-        label="Use a code from my shop"
-        variant="secondary"
-        size="lg"
-        fullWidth
-        onPress={() => router.push('/redeem-code')}
-      />
+      <View style={styles.google}>
+        <GoogleButton onStart={() => setGoogleError(null)} onError={setGoogleError} />
+        {googleError ? (
+          <Text variant="caption" color={colors.dangerSoft}>
+            {googleError}
+          </Text>
+        ) : null}
+      </View>
 
       <View style={styles.footer}>
         <Text variant="bodySoft">New here? </Text>
@@ -138,6 +150,7 @@ const styles = StyleSheet.create({
   form: { gap: spacing.lg },
   forgot: { alignSelf: 'flex-start' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  google: { gap: spacing.sm },
   rule: { flex: 1, height: 1, backgroundColor: colors.rule },
   footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
 });

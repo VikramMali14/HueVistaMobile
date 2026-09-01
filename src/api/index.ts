@@ -63,7 +63,6 @@ export { supportApi } from './support';
 export type { SupportConversation, SupportConversationSummary, SupportMessage } from './support';
 export {
   accessCodeResponseSchema,
-  redeemAccountResponseSchema,
   customerEntitlementSchema,
   assignedProductsSchema,
   shadeCodeSchemeSchema,
@@ -71,7 +70,6 @@ export {
 } from './accountSchemas';
 export type {
   AccessCodeResponse,
-  RedeemAccountResponse,
   CustomerEntitlement,
   AssignedProducts,
   ShadeCodeScheme,

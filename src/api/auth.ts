@@ -44,6 +44,23 @@ export const authApi = {
     );
   },
 
+  /**
+   * Trade the one-time code from a Google sign-in for a real session.
+   *
+   * The code arrives in the fragment of the deep link the backend redirects to
+   * and is worth nothing on its own: it expires in a minute and dies on first
+   * use. This is what turns it into tokens, and it is the login — there is no
+   * separate step afterwards.
+   */
+  exchangeOAuthCode(code: string): Promise<AuthResponse> {
+    return apiFetch('/auth/oauth2/exchange', {
+      method: 'POST',
+      json: { code },
+      skipAuth: true,
+      skipRefresh: true,
+    }).then((d) => authResponseSchema.parse(d));
+  },
+
   /** Token rotation: the response carries a NEW refresh token — persist it. */
   refresh(refreshToken: string): Promise<AuthResponse> {
     return apiFetch('/auth/refresh', {

@@ -2,7 +2,6 @@ import {
   accessCodeResponseSchema,
   assignedProductsSchema,
   customerEntitlementSchema,
-  redeemAccountResponseSchema,
   shadeCodeSchemeSchema,
 } from './accountSchemas';
 import { planSchema, pdfAllowanceSchema } from './billing';
@@ -67,23 +66,6 @@ describe('shadeCodeSchemeSchema', () => {
   });
 });
 
-describe('redeemAccountResponseSchema', () => {
-  it('parses the session a no-login redeem hands back', () => {
-    const r = redeemAccountResponseSchema.parse({
-      accessToken: 'a',
-      refreshToken: 'r',
-      tokenType: 'Bearer',
-      expiresIn: 3600,
-      user: { id: 'u1', name: 'Anita', role: 'CUSTOMER' },
-      shopName: 'Shree Paints',
-      validDays: 10,
-      customerName: 'Anita',
-    });
-    expect(r.user?.role).toBe('CUSTOMER');
-    expect(r.shopName).toBe('Shree Paints');
-  });
-});
-
 describe('planSchema', () => {
   it('parses the free tier a self-serve customer is priced on', () => {
     const p = planSchema.parse({
@@ -121,5 +103,17 @@ describe('pdfAllowanceSchema', () => {
 
   it('reads an empty answer as no allowance at all', () => {
     expect(pdfAllowanceSchema.parse({}).remaining).toBe(0);
+    expect(pdfAllowanceSchema.parse({}).unlimited).toBe(false);
+  });
+
+  it('carries the unlimited flag that explains a MAX_VALUE count', () => {
+    const a = pdfAllowanceSchema.parse({
+      imagesPerPdf: 5,
+      monthlyLimit: 2147483647,
+      used: 0,
+      remaining: 2147483647,
+      unlimited: true,
+    });
+    expect(a.unlimited).toBe(true);
   });
 });

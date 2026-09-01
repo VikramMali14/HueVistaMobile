@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Screen,
   Text,
@@ -9,13 +10,11 @@ import {
   Card,
   CodeInput,
   BackLink,
-  PressableScale,
   EmptyState,
-} from '../../src/components';
-import { colors, spacing, radius } from '../../src/theme';
-import { useSession } from '../../src/auth';
-import { accessCodesApi, ApiError, RedeemAccountResponse } from '../../src/api';
-import { haptics } from '../../src/haptics';
+} from '../src/components';
+import { colors, spacing, radius } from '../src/theme';
+import { accessCodesApi, ApiError, AccessCodeResponse } from '../src/api';
+import { haptics } from '../src/haptics';
 
 /** Every code the counter issues is six characters. */
 const CODE_LENGTH = 6;
@@ -23,12 +22,19 @@ const CODE_LENGTH = 6;
 type Refusal = 'used' | 'unknown' | null;
 
 /**
- * Redeem a shop code with no account at all.
+ * Add a shop code to the account you are already signed in to.
  *
- * The backend provisions a passwordless CUSTOMER account in the name the shop
- * entered and hands back a full session, so a walk-in goes from a code on a
- * slip to a signed-in app in one step. Their assigned projects and the products
- * the shop picked are waiting on the other side.
+ * This screen used to be a way IN: it lived in the `(auth)` group and called
+ * `/access-codes/redeem-account`, which provisioned a passwordless account off a
+ * slip of paper and handed back a session. That made a printed six-character
+ * code an identity — anyone holding the slip became the customer named on it,
+ * with no e-mail, no password and no way to ever prove otherwise or get back in
+ * on a second handset.
+ *
+ * A code is an allowance, not a login, so that is all it does now. You sign in
+ * with an e-mail or with Google first, and the code links this account to the
+ * shop that issued it and unlocks what the shop assigned — the signed-in
+ * `/access-codes/redeem`, which the website has always used.
  *
  * The design gave "code already used" a screen of its own, with the date and
  * the branch it was redeemed at. The API returns neither — 404 for unknown,
@@ -39,12 +45,12 @@ type Refusal = 'used' | 'unknown' | null;
  */
 export default function RedeemCode() {
   const router = useRouter();
-  const { signInWithSession } = useSession();
+  const queryClient = useQueryClient();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<Refusal>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<RedeemAccountResponse | null>(null);
+  const [done, setDone] = useState<AccessCodeResponse | null>(null);
 
   async function redeem(value: string = code) {
     if (value.length < CODE_LENGTH || busy) return;
@@ -52,11 +58,12 @@ export default function RedeemCode() {
     setRefusal(null);
     setError(null);
     try {
-      setDone(await accessCodesApi.redeemAccount(value));
+      const result = await accessCodesApi.redeem(value);
+      // The allowance, the shop's brands and its shade codes all change with
+      // this one call, and every screen behind it is showing the old answer.
+      await queryClient.invalidateQueries();
+      setDone(result);
       haptics.success();
-      // The session is deliberately NOT adopted here: doing so flips the auth
-      // gate immediately and this screen is replaced by the customer tabs before
-      // the walk-in has read who they are now signed in as. They step through it.
     } catch (err) {
       haptics.error();
       if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
@@ -72,33 +79,28 @@ export default function RedeemCode() {
   }
 
   if (done) {
-    const firstName = (done.customerName ?? done.user?.name ?? 'there').split(' ')[0];
+    const rooms = done.projectsRemaining ?? done.projectQuota ?? null;
     return (
       <Screen scroll contentStyle={styles.content}>
         <View style={styles.successHead}>
           <View style={styles.tick}>
             <Ionicons name="checkmark" size={26} color={colors.success} />
           </View>
-          <Text variant="title">Welcome, {firstName}.</Text>
+          <Text variant="title">You&apos;re set up.</Text>
           <Text variant="bodySoft">
-            You&apos;re signed in{done.shopName ? ` as a customer of ${done.shopName}` : ''}. Your projects
-            and the products your shop picked for you are ready.
+            Your account is linked{done.organizationName ? ` to ${done.organizationName}` : ''}. The
+            products your shop picked for you are ready.
           </Text>
-          {done.validDays ? (
+          {rooms !== null ? (
+            <Text variant="caption">
+              {rooms === 1 ? '1 room' : `${rooms} rooms`} on this code
+              {done.validDays ? `, for ${done.validDays} days` : ''}.
+            </Text>
+          ) : done.validDays ? (
             <Text variant="caption">Your access runs for {done.validDays} days.</Text>
           ) : null}
         </View>
-        <Button
-          label="Start a room"
-          size="lg"
-          fullWidth
-          loading={busy}
-          onPress={async () => {
-            setBusy(true);
-            // Adopting the session is what routes them into the app.
-            await signInWithSession(done);
-          }}
-        />
+        <Button label="Start a room" size="lg" fullWidth onPress={() => router.replace('/studio/new')} />
       </Screen>
     );
   }
@@ -118,16 +120,16 @@ export default function RedeemCode() {
           }
           body={
             refusal === 'used'
-              ? 'Each code opens one account, once. Ask at the counter for a new one, or buy a project yourself.'
+              ? 'Each code is redeemed once. Ask at the counter for a new one, or buy a room yourself.'
               : 'Check the six characters on your slip — the letter O and the digit 0 are easy to swap. If it still won’t go through, the shop can issue a fresh one.'
           }
         >
-          <Button label="Buy a project" onPress={() => router.push('/buy')} fullWidth />
+          <Button label="Buy a room" onPress={() => router.push('/buy?what=room')} fullWidth />
           <Button
             label="Browse shades instead"
             variant="secondary"
             fullWidth
-            onPress={() => router.push('/browse-shades')}
+            onPress={() => router.push('/shades')}
           />
         </EmptyState>
       </Screen>
@@ -141,8 +143,7 @@ export default function RedeemCode() {
       <View style={styles.header}>
         <Text variant="display">Enter the code from your shop.</Text>
         <Text variant="bodySoft">
-          Six characters from the counter. No account and no password — we&apos;ll set you up and sign
-          you straight in.
+          Six characters from the counter. It adds the rooms your shop assigned to this account.
         </Text>
       </View>
 
@@ -176,24 +177,10 @@ export default function RedeemCode() {
       <Card tone="quiet">
         <Text variant="label">What the code carries</Text>
         <Text variant="bodySoft" style={styles.cardBody}>
-          The projects your shop assigned to it, the paint companies and products they picked for you,
+          The rooms your shop assigned to it, the paint companies and products they picked for you,
           and the shade codes their counter reads.
         </Text>
       </Card>
-
-      <View style={styles.footer}>
-        <Text variant="bodySoft">No code? </Text>
-        <PressableScale
-          onPress={() => router.replace('/register')}
-          haptic="tap"
-          activeScale={0.95}
-          accessibilityRole="button"
-        >
-          <Text variant="label" color={colors.accentSoft}>
-            Create an account
-          </Text>
-        </PressableScale>
-      </View>
     </Screen>
   );
 }
@@ -203,7 +190,6 @@ const styles = StyleSheet.create({
   header: { gap: spacing.md },
   form: { gap: spacing.lg },
   cardBody: { marginTop: spacing.xs },
-  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   successHead: { gap: spacing.md, paddingTop: spacing.xl },
   tick: {
     width: 52,

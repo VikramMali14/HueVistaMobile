@@ -6,7 +6,6 @@ import {
   Screen,
   Text,
   Card,
-  StatusPill,
   AuthedImage,
   Reveal,
   PressableScale,
@@ -15,7 +14,6 @@ import {
 } from '../../src/components';
 import { colors, spacing, radius, hairline } from '../../src/theme';
 import { useSession } from '../../src/auth';
-import { SAMPLE_SHADES } from '../../src/shades/sampleShades';
 import { usePopularShades } from '../../src/shades/queries';
 import { summaryToShade, Shade } from '../../src/shades/types';
 import { useProjects } from '../../src/projects/queries';
@@ -63,13 +61,24 @@ export default function Home() {
   );
   const latestRender = renders[0];
 
-  // Live popular shades, with the local sample as a first-load / offline fallback.
+  /**
+   * Popular shades, from the catalogue and nowhere else.
+   *
+   * This strip used to fall back to a dozen invented colours — "Morning Glow",
+   * "Terracotta Rise" — carrying real brand names and codes that exist in no
+   * catalogue. On a slow first launch that is what a customer saw, and tapping
+   * one opened a shade detail page for a colour their shop cannot sell and their
+   * counter cannot look up. A "Sample" pill on the header does not fix that: the
+   * chips were still the wrong answer to "what can I paint this wall".
+   *
+   * So there is no fallback. Until the catalogue answers, the strip is simply
+   * not on the screen, and everything in it is a shade someone can buy.
+   */
   const popularQuery = usePopularShades(10);
-  const livePopular = (popularQuery.data ?? [])
+  const popular = (popularQuery.data ?? [])
     .map(summaryToShade)
-    .filter((s): s is Shade => s !== null);
-  const usingSample = livePopular.length === 0;
-  const popular = usingSample ? SAMPLE_SHADES.slice(0, 8) : livePopular.slice(0, 10);
+    .filter((s): s is Shade => s !== null)
+    .slice(0, 10);
 
   /**
    * Nothing to work with: no shop allowance and nothing bought. This is a
@@ -215,11 +224,9 @@ export default function Home() {
         </Reveal>
       ) : null}
 
+      {popular.length > 0 ? (
       <Reveal index={5} style={styles.section}>
-        <SectionHeader
-          title="Popular shades"
-          trailing={usingSample ? <StatusPill label="Sample" tone="neutral" /> : undefined}
-        />
+        <SectionHeader title="Popular shades" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
           {popular.map((shade) => (
             <Swatch
@@ -246,6 +253,7 @@ export default function Home() {
           ))}
         </ScrollView>
       </Reveal>
+      ) : null}
     </Screen>
   );
 }

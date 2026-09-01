@@ -11,11 +11,13 @@ import {
   SettingsRow,
   Reveal,
   StatusPill,
+  AuthedImage,
 } from '../src/components';
 import { colors, spacing, radius, hairline } from '../src/theme';
 import {
   useMyEntitlement,
   useAiCredits,
+  useMyRenders,
   usePdfAllowance,
   useRequestMoreProjects,
 } from '../src/account/queries';
@@ -40,6 +42,7 @@ export default function Credits() {
   const entitlement = useMyEntitlement().data;
   const credits = useAiCredits().data;
   const boards = usePdfAllowance().data;
+  const renders = useMyRenders().data ?? [];
   const ask = useRequestMoreProjects();
 
   const expiry = expiryText(entitlement?.accessExpiresAt);
@@ -151,15 +154,57 @@ export default function Credits() {
         </Text>
       </Reveal>
 
+      {/* The other half of what this page is for. The wallet figure above says
+          how many images are left to make; this says what the credits already
+          spent turned into, because a balance with nothing to show for it is
+          only half the account. The shelf itself lives in the Library — this is
+          the four most recent, and a way through to the rest. */}
+      <Reveal index={4} style={styles.section}>
+        <Text variant="eyebrow">AI images</Text>
+        {renders.length === 0 ? (
+          <Card tone="quiet">
+            <Text variant="subhead">No AI images yet</Text>
+            <Text variant="bodySoft" style={styles.cardBody}>
+              {credits && credits.balance > 0
+                ? `You have ${credits.balance} ${credits.balance === 1 ? 'credit' : 'credits'}. Once a room has a colour board, one credit paints the scheme into a photorealistic picture of it.`
+                : 'Once a room has a colour board, a credit paints the scheme into a photorealistic picture of the room.'}
+            </Text>
+          </Card>
+        ) : (
+          <>
+            <View style={styles.shelf}>
+              {renders.slice(0, 4).map((r) => (
+                <Card
+                  key={r.id}
+                  padded={false}
+                  onPress={() => router.push(`/ai/${r.projectId}?render=${r.id}`)}
+                  style={styles.shelfItem}
+                >
+                  <AuthedImage url={r.imageUrl} style={styles.shelfThumb} contentFit="cover" transition={150} />
+                </Card>
+              ))}
+            </View>
+            <Text variant="caption">
+              {renders.length === 1 ? '1 image' : `${renders.length} images`} on this account. All of
+              them live in your Library.
+            </Text>
+          </>
+        )}
+      </Reveal>
+
       {boards && boards.monthlyLimit > 0 ? (
-        <Reveal index={4} style={styles.section}>
+        <Reveal index={5} style={styles.section}>
           <Text variant="eyebrow">Colour boards</Text>
           <Card tone="quiet">
             <View style={styles.boardRow}>
               <Text variant="bodySoft">Downloads left this month</Text>
+              {/* An uncapped allowance arrives as Integer.MAX_VALUE in both
+                  counts, which read out as "2147483647 of 2147483647". The
+                  server sends `unlimited` alongside precisely so a client can
+                  say the thing it actually means instead. */}
               <StatusPill
-                label={`${boards.remaining} of ${boards.monthlyLimit}`}
-                tone={boards.remaining > 0 ? 'done' : 'progress'}
+                label={boards.unlimited ? 'Unlimited' : `${boards.remaining} of ${boards.monthlyLimit}`}
+                tone={boards.unlimited || boards.remaining > 0 ? 'done' : 'progress'}
               />
             </View>
             <Text variant="caption" style={styles.cardBody}>
@@ -204,6 +249,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.glass,
   },
   section: { gap: spacing.md },
+  shelf: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  // Two to a row, so a picture of a room is big enough to recognise.
+  shelfItem: { width: '48%', aspectRatio: 4 / 3, overflow: 'hidden' },
+  shelfThumb: { width: '100%', height: '100%' },
   cardBody: { marginTop: spacing.xs },
   cardAction: { marginTop: spacing.md },
   asked: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },

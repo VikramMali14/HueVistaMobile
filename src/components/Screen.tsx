@@ -46,10 +46,30 @@ export function Screen({
   // last row of a screen out from under it.
   const tabBarInset = useTabBarInset();
 
+  /**
+   * The screen's own padding, with the notch added ON TOP of whatever the page
+   * asked for rather than beside it.
+   *
+   * `contentStyle` is applied after this in the style array, so a page that set
+   * its own `paddingTop` — most of them do, to open a little air above the first
+   * line — silently replaced the safe-area inset with a flat 20px. On a notched
+   * phone that put the back button and the first heading of every stack screen
+   * under the status bar, behind the clock. Folding the two together here is the
+   * fix: the page still controls its breathing room, and the inset it cannot
+   * know about is always added to it.
+   */
+  const own = StyleSheet.flatten(contentStyle) ?? {};
+  const ownTop = num(own.paddingTop ?? own.paddingVertical);
+  const ownBottom = num(own.paddingBottom ?? own.paddingVertical);
+  const ownSides = num(own.paddingHorizontal) ?? spacing.lg;
+
   const pad: ViewStyle = {
-    paddingTop: edges.top ? insets.top + spacing.md : spacing.md,
-    paddingBottom: (edges.bottom ? insets.bottom + spacing.lg : spacing.xl) + tabBarInset,
-    paddingHorizontal: spacing.lg,
+    paddingTop: (edges.top ? insets.top : 0) + (ownTop ?? spacing.md),
+    paddingBottom:
+      (edges.bottom ? insets.bottom : 0) +
+      (ownBottom ?? (edges.bottom ? spacing.lg : spacing.xl)) +
+      tabBarInset,
+    paddingHorizontal: ownSides,
   };
 
   // With a pinned region the padding splits: the top and sides belong to it, and
@@ -57,23 +77,25 @@ export function Screen({
   // the scroll view too would open a gap under the pinned content.
   const pinnedPad: ViewStyle = {
     paddingTop: pad.paddingTop,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: ownSides,
   };
   const scrollPad: ViewStyle = fixed
-    ? { paddingTop: spacing.md, paddingBottom: pad.paddingBottom, paddingHorizontal: spacing.lg }
+    ? { paddingTop: spacing.md, paddingBottom: pad.paddingBottom, paddingHorizontal: ownSides }
     : pad;
 
+  // `pad` already carries everything `contentStyle` said about padding, so it
+  // goes last and nothing can put the inset back under the notch.
   const body = scroll ? (
     <ScrollView
       style={styles.fill}
-      contentContainerStyle={[scrollPad, contentStyle]}
+      contentContainerStyle={[contentStyle, scrollPad]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.fill, pad, contentStyle]}>{children}</View>
+    <View style={[styles.fill, contentStyle, pad]}>{children}</View>
   );
 
   return (
@@ -83,6 +105,11 @@ export function Screen({
       {body}
     </View>
   );
+}
+
+/** Padding values are numbers everywhere in this app; anything else is ignored. */
+function num(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
 }
 
 const styles = StyleSheet.create({

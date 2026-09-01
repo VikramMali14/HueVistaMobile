@@ -12,6 +12,24 @@ export const API_ORIGIN = (process.env.EXPO_PUBLIC_API_ORIGIN ?? 'http://localho
 export const API_BASE = `${API_ORIGIN}/api`;
 
 /**
+ * Where a Google sign-in is started, and where it comes back to.
+ *
+ * The app has no Google SDK and no OAuth client of its own: it opens the
+ * backend's own authorization entry point in a system browser session, and the
+ * backend — which already runs this flow for the website — sends a short-lived,
+ * single-use exchange code back to the deep link below. `client=mobile` is what
+ * tells it to land on the app rather than on the website's callback page.
+ *
+ * The redirect must match `app.mobile.oauth-redirect-uri` on the server and the
+ * `scheme` in app.json. It is overridable so a build pointed at a staging API
+ * (or running under a different scheme) can agree with it without a code change.
+ */
+export const GOOGLE_AUTH_URL = `${API_ORIGIN}/oauth2/authorization/google?client=mobile`;
+
+export const OAUTH_REDIRECT_URI =
+  process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URI ?? 'huevista://sign-in/callback';
+
+/**
  * The website's origin, when the build knows it.
  *
  * Payments are a Razorpay Checkout web flow and the app carries no payment SDK,

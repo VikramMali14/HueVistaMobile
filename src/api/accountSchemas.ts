@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { authResponseSchema } from './schemas';
 
 /**
  * Wire schemas for the account module — from `com.gridstore.huevista.account.dto`,
@@ -62,18 +61,6 @@ export const accessCodeResponseSchema = z.object({
   extensionCount: z.number().nullish(),
 });
 export type AccessCodeResponse = z.infer<typeof accessCodeResponseSchema>;
-
-/**
- * RedeemAccountResponse — `POST /api/access-codes/redeem-account` (public).
- * Redeeming a shop code with no login auto-provisions a passwordless CUSTOMER
- * account, named as the shop entered it, and returns a full session.
- */
-export const redeemAccountResponseSchema = authResponseSchema.extend({
-  shopName: z.string().nullish(),
-  validDays: z.number().nullish(),
-  customerName: z.string().nullish(),
-});
-export type RedeemAccountResponse = z.infer<typeof redeemAccountResponseSchema>;
 
 /**
  * CustomerEntitlementResponse — `GET /api/me/entitlement`. The customer's project
