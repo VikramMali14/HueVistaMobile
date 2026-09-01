@@ -30,6 +30,36 @@ export const OAUTH_REDIRECT_URI =
   process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URI ?? 'huevista://sign-in/callback';
 
 /**
+ * Where a Razorpay Checkout comes back to.
+ *
+ * Payment takes the same shape as the Google sign-in above, and for the same
+ * reason: Checkout is a web library with no supported React Native entry point,
+ * and the alternative — a payment SDK on the handset — means owning card data
+ * this product has no business touching. So the app creates the order itself
+ * (priced server-side, against its own session), opens the website's checkout
+ * window in a browser session, and reads the result off the redirect back to
+ * this scheme. The money is never decided in that browser: the app verifies the
+ * outcome against the backend, which checks the signature over its own record
+ * of the order.
+ *
+ * Must match `NEXT_PUBLIC_MOBILE_PAY_REDIRECT` on the website and the `scheme`
+ * in app.json.
+ */
+export const PAY_REDIRECT_URI =
+  process.env.EXPO_PUBLIC_PAY_REDIRECT_URI ?? 'huevista://pay/callback';
+
+/** The website's checkout window for a Razorpay order, or null with no web origin. */
+export function checkoutUrl(params: Record<string, string | number | undefined>): string | null {
+  const base = webUrl('/pay/mobile');
+  if (!base) return null;
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && `${v}`.length > 0) q.set(k, `${v}`);
+  }
+  return `${base}?${q.toString()}`;
+}
+
+/**
  * The website's origin, when the build knows it.
  *
  * Payments are a Razorpay Checkout web flow and the app carries no payment SDK,
