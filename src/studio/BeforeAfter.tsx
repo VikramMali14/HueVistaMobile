@@ -12,6 +12,10 @@ export interface BeforeAfterProps {
   layers: PaintLayer[];
   width: number;
   height: number;
+  /** Whole-image midtone lift (the Brighten control), 1 = untouched. Applied to
+   *  BOTH halves: a wipe between a lifted "after" and an unlifted "before" is
+   *  a comparison of two exposures, not of two colours. */
+  bright?: number;
   style?: ViewStyle;
 }
 
@@ -30,7 +34,7 @@ const EDGE = 0.06;
  * clipped by a view whose width follows the finger. Nothing re-decodes as it
  * moves, so the wipe stays smooth while a five-wall room is composited.
  */
-export function BeforeAfter({ photo, layers, width, height, style }: BeforeAfterProps) {
+export function BeforeAfter({ photo, layers, width, height, bright, style }: BeforeAfterProps) {
   const [split, setSplit] = useState(0.5);
   /**
    * The live split, for handlers that must not close over a stale render.
@@ -80,11 +84,11 @@ export function BeforeAfter({ photo, layers, width, height, style }: BeforeAfter
       }
     >
       {/* After — the painted room, full width, underneath. */}
-      <PaintedPhoto photo={photo} layers={layers} width={width} height={height} />
+      <PaintedPhoto photo={photo} layers={layers} width={width} height={height} bright={bright} />
 
       {/* Before — the bare room, clipped to the left of the handle. */}
       <View style={[styles.clip, { width: beforeWidth }]} pointerEvents="none">
-        <PaintedPhoto photo={photo} layers={[]} width={width} height={height} />
+        <PaintedPhoto photo={photo} layers={[]} width={width} height={height} bright={bright} />
       </View>
 
       <View style={[styles.line, { left: beforeWidth }]} pointerEvents="none">

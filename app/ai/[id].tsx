@@ -16,6 +16,7 @@ import {
   AuthedImage,
   WorkCard,
   PressableScale,
+  BUTTON_INK,
 } from '../../src/components';
 import { colors, spacing, radius, hairline, alpha, useElapsedSeconds } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
@@ -357,7 +358,7 @@ export default function AiRoute() {
             label="Save to phone"
             size="lg"
             fullWidth
-            icon={<Ionicons name="download-outline" size={18} color={colors.onFill} />}
+            icon={<Ionicons name="download-outline" size={18} color={BUTTON_INK.primary} />}
             onPress={saveImage}
           />
           <Button
@@ -491,7 +492,7 @@ export default function AiRoute() {
           fullWidth
           loading={requesting}
           disabled={!selectedCombo || short || requesting}
-          icon={<Ionicons name="sparkles" size={18} color={colors.onFill} />}
+          icon={<Ionicons name="sparkles" size={18} color={BUTTON_INK.primary} />}
           onPress={requestRender}
         />
         {credits?.eligible ? (

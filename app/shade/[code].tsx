@@ -102,7 +102,7 @@ export default function ShadeDetail() {
   }
 
   return (
-    <Screen scroll contentStyle={styles.content} tint={hex} auroraIntensity={0.8}>
+    <Screen scroll contentStyle={styles.content} auroraIntensity={0.8}>
       <BackLink />
 
       <PressableScale

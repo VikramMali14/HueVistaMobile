@@ -15,8 +15,6 @@ export interface ScreenProps {
    * content owns the colour (a full-bleed room photo, the recolor canvas).
    */
   aurora?: boolean;
-  /** Bias the aurora toward a colour, e.g. the shade currently on the wall. */
-  tint?: string | null;
   /** 0–1 presence. Hero screens go to ~1.2, dense lists sit around 0.6. */
   auroraIntensity?: number;
   /**
@@ -36,7 +34,6 @@ export function Screen({
   edges = { top: true },
   contentStyle,
   aurora = true,
-  tint,
   auroraIntensity = 1,
   fixed,
 }: ScreenProps) {
@@ -100,7 +97,7 @@ export function Screen({
 
   return (
     <View style={styles.root}>
-      {aurora ? <Aurora tint={tint} intensity={auroraIntensity} /> : null}
+      {aurora ? <Aurora intensity={auroraIntensity} /> : null}
       {fixed ? <View style={pinnedPad}>{fixed}</View> : null}
       {body}
     </View>

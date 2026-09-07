@@ -8,7 +8,11 @@ import {
   labHue,
   lrvFromHex,
   lrvOf,
+  measuredLrv,
+  temperature,
   undertone,
+  undertoneClash,
+  whiteTint,
 } from './colorScience';
 
 describe('hex parsing', () => {
@@ -128,5 +132,61 @@ describe('ink on a swatch', () => {
   it('goes dark on light paint and light on dark paint', () => {
     expect(inkOn('#ffffff').strong).toContain('26,22,18');
     expect(inkOn('#101010').strong).toContain('255,255,255');
+  });
+});
+
+describe('measuredLrv', () => {
+  it('reports only what the brand measured', () => {
+    expect(measuredLrv({ lrv: 68 })).toBe(68);
+    expect(measuredLrv({ lrv: '68.4' })).toBe(68);
+  });
+
+  it('invents nothing when the catalogue row carries no measurement', () => {
+    // The renderer corrects a hex against this. A value derived from the hex
+    // would be the hex correcting itself.
+    expect(measuredLrv({})).toBeNull();
+    expect(measuredLrv({ lrv: null })).toBeNull();
+    expect(measuredLrv({ lrv: 'not a number' })).toBeNull();
+  });
+});
+
+describe('undertoneClash', () => {
+  it('warns when a clearly warm colour meets a clearly cool one', () => {
+    const verdict = undertoneClash('#a8532f', '#3f5f8a');
+    expect(verdict.clash).toBe(true);
+    expect(verdict.reason).toContain('same room');
+  });
+
+  it('stays quiet when either colour is near-grey', () => {
+    // A neutral sits with anything, which is most of why people reach for one.
+    expect(undertoneClash('#a8532f', '#8e8b88').clash).toBe(false);
+  });
+
+  it('stays quiet for two colours of the same temperature', () => {
+    expect(undertoneClash('#a8532f', '#c9a05e').clash).toBe(false);
+  });
+
+  it('catches two near-whites whose hidden tints pull opposite ways', () => {
+    // The "my ceiling white looks dirty next to the wall white" complaint.
+    const verdict = undertoneClash('#f6f2e4', '#eef2f6');
+    expect(verdict.clash).toBe(true);
+    expect(verdict.reason).toContain('fight');
+  });
+
+  it('lets two whites that lean the same way alone', () => {
+    expect(undertoneClash('#f6f2e4', '#f7f1e0').clash).toBe(false);
+  });
+});
+
+describe('whiteTint and temperature', () => {
+  it('names which way a near-white leans', () => {
+    expect(whiteTint('#f6f2e4')).toBe('warm');
+    expect(whiteTint('#eef2f6')).toBe('cool');
+  });
+
+  it('splits the wheel the way the website does', () => {
+    expect(temperature('#a8532f')).toBe('warm');
+    expect(temperature('#3f5f8a')).toBe('cool');
+    expect(temperature('#8e8b88')).toBe('neutral');
   });
 });

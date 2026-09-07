@@ -101,17 +101,36 @@ export function lrvFromHex(hex: string): number {
 }
 
 /**
- * The shade's Light Reflectance Value: the brand's measurement when there is
- * one, otherwise derived from the hex.
+ * The brand's MEASURED Light Reflectance Value, and nothing else. Null when the
+ * catalogue row carries none.
+ *
+ * Kept apart from `lrvOf` because the renderer must not confuse the two. The
+ * painted colour is the hex corrected to this measurement (see
+ * `lrvCorrectedRgb01` in the engine), and that correction only means something
+ * when the number came off a real paint chip. Handing it a value derived from
+ * the hex asks the hex to correct itself, which is either a no-op or, once
+ * rounding is in play, a quiet nudge to a colour nobody measured.
  *
  * The wire type is a BigDecimal, which arrives as a number or a string
  * depending on the serializer, so both are accepted.
  */
+export function measuredLrv(shade: { lrv?: number | string | null }): number | null {
+  if (shade.lrv == null) return null;
+  const n = typeof shade.lrv === 'string' ? Number(shade.lrv) : shade.lrv;
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+/**
+ * The shade's Light Reflectance Value for DISPLAY: the brand's measurement when
+ * there is one, otherwise derived from the hex.
+ *
+ * Right for the things a customer reads — how light this is, which depth band it
+ * falls in — where an approximation beats an em dash. Wrong for painting; see
+ * `measuredLrv`.
+ */
 export function lrvOf(shade: { hexCode?: string | null; lrv?: number | string | null }): number | null {
-  if (shade.lrv != null) {
-    const n = typeof shade.lrv === 'string' ? Number(shade.lrv) : shade.lrv;
-    if (Number.isFinite(n)) return Math.round(n);
-  }
+  const measured = measuredLrv(shade);
+  if (measured != null) return measured;
   return shade.hexCode ? lrvFromHex(shade.hexCode) : null;
 }
 
@@ -155,6 +174,78 @@ export const UNDERTONE_DOT: Record<Undertone, string> = {
   violet: '#9c86b0',
   neutral: '#9a968e',
 };
+
+export type Temperature = 'warm' | 'cool' | 'neutral';
+
+const WARM_TONES: readonly Undertone[] = ['pinkish', 'peachy', 'yellowish'];
+
+export function temperature(hex: string): Temperature {
+  const tone = undertone(hex);
+  if (tone === 'neutral') return 'neutral';
+  return WARM_TONES.includes(tone) ? 'warm' : 'cool';
+}
+
+/** The hidden tint of a near-white. The thresholds are deliberately small. */
+export type WhiteTint = 'warm' | 'pinkish' | 'greenish' | 'cool' | 'neutral';
+
+export function whiteTint(hex: string): WhiteTint {
+  const lab = hexToLab(hex);
+  if (lab.b >= 5) return 'warm'; // yellow-leaning
+  if (lab.a >= 3) return 'pinkish';
+  if (lab.a <= -3) return 'greenish';
+  if (lab.b <= -2) return 'cool'; // blue-leaning
+  return 'neutral';
+}
+
+export interface ClashVerdict {
+  clash: boolean;
+  /** Plain-words reason, ready to show to a customer. */
+  reason?: string;
+}
+
+/**
+ * Do two shades "fight"? Two cases worth warning about:
+ *  - a clearly warm colour next to a clearly cool one (both saturated enough
+ *    that the difference shows on a wall);
+ *  - two near-whites whose hidden tints pull different ways (the classic
+ *    "my ceiling white looks dirty next to the wall white" complaint).
+ * Anything involving a true neutral never clashes.
+ *
+ * Ported from the website, same thresholds and same words. This is the sort of
+ * thing the person behind the counter says out loud and the app was silent
+ * about: the phone is where the customer is standing in the actual room, and it
+ * had no opinion at all about two colours that will look wrong together.
+ */
+export function undertoneClash(hexA: string, hexB: string): ClashVerdict {
+  const labA = hexToLab(hexA);
+  const labB = hexToLab(hexB);
+  const cA = chroma(labA);
+  const cB = chroma(labB);
+
+  // Whites: small tints, but side by side they show.
+  if (labA.L >= 85 && labB.L >= 85) {
+    const tintA = whiteTint(hexA);
+    const tintB = whiteTint(hexB);
+    if (tintA !== 'neutral' && tintB !== 'neutral' && tintA !== tintB) {
+      return {
+        clash: true,
+        reason: `one white leans ${tintA}, the other ${tintB} — side by side they fight`,
+      };
+    }
+    return { clash: false };
+  }
+
+  if (cA < 8 || cB < 8) return { clash: false };
+  const tA = temperature(hexA);
+  const tB = temperature(hexB);
+  if (tA !== 'neutral' && tB !== 'neutral' && tA !== tB) {
+    return {
+      clash: true,
+      reason: `${undertone(hexA)} (${tA}) against ${undertone(hexB)} (${tB}) can look odd in the same room`,
+    };
+  }
+  return { clash: false };
+}
 
 // ── Depth ──────────────────────────────────────────────────────────────────
 

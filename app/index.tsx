@@ -11,7 +11,27 @@ import {
   useReducedMotion,
 } from '../src/theme';
 
-const SPECTRUM = ['#7c5cff', '#a080ff', '#6fae76', '#d9b45c', '#cf7b60'];
+/**
+ * The five bars, dealt out.
+ *
+ * One colour in five values, not five colours. They used to be the old violet
+ * palette's accent, its light cut, the sage, the amber and the terracotta —
+ * three of which are STATUS colours (success, warning, failure) doing duty as a
+ * brand mark, and all five of which stayed violet-and-friends after the palette
+ * moved to brass. So the first thing anyone saw on a cold start was the previous
+ * design.
+ *
+ * A ramp of the one brand colour is also the more honest mark for this product:
+ * the promise is a colour at the value you actually asked for, which is exactly
+ * what a fan of one hue at five values shows.
+ */
+const SPECTRUM = [
+  colors.accentDeep,
+  '#ad7a41',
+  colors.accent,
+  '#cb9a5e',
+  colors.accentSoft,
+] as const;
 
 /**
  * Launch.
@@ -96,7 +116,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 8,
     borderRadius: 4,
-    shadowOpacity: 0.7,
+    shadowOpacity: 0.5,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },
     elevation: 4,

@@ -23,6 +23,7 @@ import {
   SheetModal,
   Text,
   WorkCard,
+  BUTTON_INK,
 } from '../components';
 import { colors, spacing, radius, alpha, hairline, elevation, useElapsedSeconds } from '../theme';
 import { haptics } from '../haptics';
@@ -38,8 +39,18 @@ import {
   type RecommendationResponse,
 } from '../api';
 import { recommendationsApi } from '../api';
-import { fitBox, samplePhotoHex, useAuthedSkImageState, type PaintLayer } from '../engine';
+import {
+  BRIGHTEN_LEVELS,
+  fitBox,
+  gammaFor,
+  samplePhotoHex,
+  useAuthedSkImageState,
+  type BrightenId,
+  type PaintLayer,
+} from '../engine';
 import { useRecentShades } from '../shades/recentShades';
+import { useShadeLrvs } from '../shades/queries';
+import { undertoneClash } from '../shades/colorScience';
 import { shadeDisplay } from '../shades/shadeCodes';
 import { isCatalogueShade, type Shade } from '../shades/types';
 import { useRequestMoreProjects, useShadeCodeScheme } from '../account/queries';
@@ -54,7 +65,17 @@ import { StepRail, type StepId } from './StepRail';
 import { stepOfProject } from './roomStep';
 import { summariseSurfaces } from './surfaceGroups';
 
-type Applied = { hex: string; code?: string };
+/**
+ * What is on a surface: the colour, the shade behind it when there is one, and
+ * that shade's measured LRV.
+ *
+ * The LRV rides along because it is what the renderer paints (see `paintTarget`)
+ * — the catalogue hex is a screen approximation and the LRV is a measurement of
+ * the real paint. `undefined` means "not looked up yet", `null` means "looked up,
+ * the catalogue has none", and the two are different: the first resolves, the
+ * second never will.
+ */
+type Applied = { hex: string; code?: string; lrv?: number | null };
 
 /** Which of the three ways of choosing a colour is open. */
 type DockTab = 'shades' | 'palettes' | 'finder';
@@ -123,6 +144,19 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   const [pickedHex, setPickedHex] = useState<string | null>(null);
   const [canvasNote, setCanvasNote] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
+
+  /**
+   * The Brighten control — the website's, which the phone did not have.
+   *
+   * Rooms get photographed in the evening, under one bulb, with the curtains
+   * shut. On a photo like that every shade reads muddy and the customer blames
+   * the paint. Three fixed levels rather than a slider, for the reason the site
+   * gives: a free slider invites over-brightening, and an over-brightened photo
+   * falsifies every colour laid on it.
+   */
+  const [bright, setBright] = useState<BrightenId>('original');
+  const [brightOpen, setBrightOpen] = useState(false);
+  const brightGamma = gammaFor(bright);
 
   const [maskOpen, setMaskOpen] = useState(false);
   const [maskTarget, setMaskTarget] = useState<{
@@ -221,15 +255,66 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
     return { hex: region.appliedHexCode, code: region.appliedShadeCode ?? undefined };
   }
 
+  /**
+   * The LRV of every shade the SERVER says is on a wall.
+   *
+   * A colour the customer just tapped brought its own measurement with it, in
+   * the override. A room reopened tomorrow did not: the project stores a code
+   * and a hex and nothing about how much light that paint reflects, so without
+   * this lookup the same room repainted itself a slightly different colour on
+   * every visit — lighter or darker by exactly the gap between the catalogue's
+   * screen hex and its measured chip.
+   */
+  const persistedCodes = useMemo(
+    () => regions.map((r) => r.appliedShadeCode ?? '').filter((c) => c.length > 0),
+    [regions],
+  );
+  const persistedLrv = useShadeLrvs(persistedCodes);
+
   const layers: PaintLayer[] = regions
-    .map((r) => {
+    .map((r): PaintLayer | null => {
       const c = appliedColor(r);
-      return c ? { key: `r${r.id}-${c.hex}`, maskUrl: regionMaskUrl(id, r.id), color: c.hex } : null;
+      if (!c) return null;
+      const lrv = c.lrv !== undefined ? c.lrv : c.code ? (persistedLrv[c.code] ?? null) : null;
+      return {
+        key: `r${r.id}-${c.hex}-${lrv ?? 'x'}`,
+        maskUrl: regionMaskUrl(id, r.id),
+        color: c.hex,
+        lrv,
+      };
     })
     .filter((l): l is PaintLayer => l !== null);
 
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
   const paintedCount = layers.length;
+
+  /**
+   * Whether two colours in this room will fight, in the words the counter uses.
+   *
+   * The website has warned about this since its visualizer was written and the
+   * phone had no opinion at all — which is the wrong way round, because the
+   * phone is the one being held in the actual room. A warm wall against a cool
+   * one, or two whites whose hidden tints pull opposite ways, is the complaint
+   * that comes back after the painting is done.
+   *
+   * It is a note, not a refusal: some people want the contrast, and the app does
+   * not get to overrule the person who is going to live there.
+   */
+  const clashNote = useMemo(() => {
+    const painted = regions
+      .map((r) => ({ label: r.label ?? r.category ?? 'a surface', colour: appliedColor(r) }))
+      .filter((r): r is { label: string; colour: Applied } => r.colour !== null);
+    for (let i = 0; i < painted.length; i++) {
+      for (let j = i + 1; j < painted.length; j++) {
+        const verdict = undertoneClash(painted[i].colour.hex, painted[j].colour.hex);
+        if (verdict.clash) return `${painted[i].label} and ${painted[j].label}: ${verdict.reason}.`;
+      }
+    }
+    return null;
+    // `appliedColor` reads `overrides`, which is the other half of what makes a
+    // freshly tapped swatch count here rather than only the saved one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regions, overrides]);
 
   async function applyShade(shade: Shade) {
     if (selectedRegionId == null || readOnly) {
@@ -248,7 +333,13 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
     if (catalogue) remember(shade);
     setOverrides((prev) => ({
       ...prev,
-      [selectedRegionId]: { hex: shade.hex, code: catalogue ? shade.code : undefined },
+      [selectedRegionId]: {
+        hex: shade.hex,
+        code: catalogue ? shade.code : undefined,
+        // Null, not undefined: a colour with no catalogue measurement behind it
+        // is a settled answer, not a pending lookup.
+        lrv: shade.lrv ?? null,
+      },
     }));
     try {
       await projectsApi.updateRegionColors(id, [
@@ -392,14 +483,8 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   const selectedColour = appliedColor(selectedRegion);
 
   const canvasMode: CanvasMode = picking ? 'pick' : 'idle';
-  /**
-   * The screen sits in the light of whatever colour is in play — the paint on
-   * the selected surface, or the colour just lifted out of the photo. It is the
-   * one place in the app where the background knows what the user is doing.
-   */
-  const tint = pickedHex ?? selectedColour?.hex ?? null;
-
   const title = project?.name ?? 'Untitled room';
+  const brightLabel = BRIGHTEN_LEVELS.find((l) => l.id === bright)?.label ?? 'Original';
 
   /* ── Chrome shared by every step ────────────────────────────────────────── */
   const header = (
@@ -451,7 +536,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   /* ── Step 2 · Prepare ───────────────────────────────────────────────────── */
   if (step === 'prepare') {
     return (
-      <Screen scroll contentStyle={styles.content} tint={tint}>
+      <Screen scroll contentStyle={styles.content}>
         {header}
 
         <View style={styles.photoWrap}>
@@ -513,7 +598,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   if (step === 'walls') {
     if (status === 'SEGMENTING') {
       return (
-        <Screen scroll contentStyle={styles.content} tint={tint}>
+        <Screen scroll contentStyle={styles.content}>
           {header}
           <View style={styles.photoWrap}>
             <RoomPhoto
@@ -534,7 +619,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
 
     const failed = status === 'FAILED';
     return (
-      <Screen scroll contentStyle={styles.content} tint={tint}>
+      <Screen scroll contentStyle={styles.content}>
         {header}
         <View style={styles.photoWrap}>
           <RoomPhoto
@@ -647,7 +732,6 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
   return (
     <Screen
       scroll
-      tint={tint}
       contentStyle={styles.content}
       /* Chrome, the room, and the surfaces stay put. Everything that changes
          the walls scrolls beneath them, so the photo is always in view while
@@ -660,6 +744,33 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
             <Text variant="heading" numberOfLines={1} style={styles.title}>
               {title}
             </Text>
+            <View style={styles.titleTools}>
+            {photo ? (
+              <PressableScale
+                onPress={() => setBrightOpen(true)}
+                haptic="tap"
+                activeScale={0.94}
+                accessibilityRole="button"
+                accessibilityState={{ selected: bright !== 'original' }}
+                accessibilityLabel={`Brighten the photo, currently ${brightLabel.toLowerCase()}`}
+                style={StyleSheet.flatten([
+                  styles.compare,
+                  bright !== 'original' ? styles.compareOn : null,
+                ])}
+              >
+                <Ionicons
+                  name="sunny-outline"
+                  size={14}
+                  color={bright !== 'original' ? colors.accentSoft : colors.fgSoft}
+                />
+                <Text
+                  variant="label"
+                  color={bright !== 'original' ? colors.accentSoft : colors.fgSoft}
+                >
+                  {bright === 'original' ? 'Light' : brightLabel}
+                </Text>
+              </PressableScale>
+            ) : null}
             {paintedCount > 0 ? (
               <PressableScale
                 onPress={() => setComparing((c) => !c)}
@@ -680,10 +791,17 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
                 </Text>
               </PressableScale>
             ) : null}
+            </View>
           </View>
 
           {comparing && paintedCount > 0 ? (
-            <BeforeAfter photo={photo} layers={layers} width={canvas.width} height={canvas.height} />
+            <BeforeAfter
+              photo={photo}
+              layers={layers}
+              width={canvas.width}
+              height={canvas.height}
+              bright={brightGamma}
+            />
           ) : (
             <RoomPhoto
               ref={shotRef}
@@ -697,6 +815,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               onTap={liftColour}
               onMiss={() => setCanvasNote('That spot is outside the photo. Tap somewhere on the room.')}
               hint={picking ? 'Tap the colour you want to match' : null}
+              bright={brightGamma}
             />
           )}
 
@@ -777,7 +896,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
                 label="Pick colours"
                 size="lg"
                 fullWidth
-                icon={<Ionicons name="color-palette-outline" size={18} color={colors.onFill} />}
+                icon={<Ionicons name="color-palette-outline" size={18} color={BUTTON_INK.primary} />}
                 onPress={() => setStepOverride('colour')}
               />
               <Button
@@ -858,6 +977,15 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               />
             )}
 
+            {clashNote ? (
+              <View style={styles.clash}>
+                <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
+                <Text variant="caption" color={colors.warning} style={styles.clashText}>
+                  {clashNote}
+                </Text>
+              </View>
+            ) : null}
+
             {saveError ? (
               <Text variant="caption" color={colors.warning}>
                 {saveError}
@@ -871,7 +999,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               size="lg"
               fullWidth
               disabled={!readOnly && paintedCount === 0}
-              icon={<Ionicons name="document-text-outline" size={18} color={colors.onFill} />}
+              icon={<Ionicons name="document-text-outline" size={18} color={BUTTON_INK.primary} />}
               onPress={openBoard}
             />
             {!readOnly && paintedCount === 0 ? (
@@ -901,6 +1029,25 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
         editTarget={maskTarget}
         onSaved={onWallSaved}
       />
+
+      {/* The photo is the evidence, and a photo shot at dusk is bad evidence.
+          This lifts the whole picture — paint included — so the shades can be
+          judged in the light the wall would actually have. */}
+      <SheetModal visible={brightOpen} onClose={() => setBrightOpen(false)} title="Light in this photo">
+        <View style={styles.sheet}>
+          <Segmented
+            options={BRIGHTEN_LEVELS.map((l) => ({ value: l.id, label: l.label }))}
+            value={bright}
+            onChange={(id) => setBright(id)}
+            accessibilityLabel="How much to brighten the photo"
+          />
+          <Text variant="bodySoft">
+            Lifts the shadows and midtones of the photo without blowing out a bright window. The paint
+            is lifted with it, so what you are comparing is still the colours and not two exposures.
+          </Text>
+          <Button label="Done" fullWidth onPress={() => setBrightOpen(false)} />
+        </View>
+      </SheetModal>
 
       <SheetModal visible={renameOpen} onClose={() => setRenameOpen(false)} title="Name this room">
         <View style={styles.sheet}>
@@ -1200,6 +1347,9 @@ const styles = StyleSheet.create({
   pinned: { gap: spacing.md },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   title: { flex: 1 },
+  titleTools: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  clash: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
+  clashText: { flex: 1 },
   compare: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -16,6 +16,7 @@ import {
   EmptyState,
   StatusPill,
   Swatch,
+  BUTTON_INK,
 } from '../../src/components';
 import { colors, spacing, radius, hairline, fontSize, alpha } from '../../src/theme';
 import { useProject } from '../../src/projects/queries';
@@ -270,7 +271,7 @@ export default function BoardRoute() {
           size="lg"
           fullWidth
           loading={recording}
-          icon={<Ionicons name="document-text-outline" size={18} color={colors.onFill} />}
+          icon={<Ionicons name="document-text-outline" size={18} color={BUTTON_INK.primary} />}
           onPress={record}
         />
       </Screen>
@@ -356,7 +357,7 @@ export default function BoardRoute() {
           size="lg"
           fullWidth
           loading={savingImage}
-          icon={<Ionicons name="download-outline" size={18} color={colors.onFill} />}
+          icon={<Ionicons name="download-outline" size={18} color={BUTTON_INK.primary} />}
           onPress={saveToPhone}
         />
         <Button

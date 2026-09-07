@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Text, Serif, Button, PressableScale, Aurora, GoogleButton } from '../../src/components';
 import { usePopularShades } from '../../src/shades/queries';
 import {
+  alpha,
   colors,
   spacing,
   radius,
@@ -41,8 +42,8 @@ import {
 const SPANS = [2, 1, 1, 1, 2, 1, 1, 2, 1] as const;
 
 const GROUND = [
-  '#2a2734', '#332f3f', '#26232f', '#3a3547', '#2f2b3a',
-  '#241f2d', '#37324a', '#2b2735', '#302c3d',
+  '#231f1a', '#2c2721', '#1f1b17', '#332c24', '#282320',
+  '#1c1915', '#362f26', '#25211c', '#2a251f',
 ] as const;
 
 /**
@@ -84,7 +85,7 @@ export default function Welcome() {
         {/* The colour runs out under the copy rather than stopping at an edge,
             so the type sits in the same space as the paint. */}
         <LinearGradient
-          colors={['rgba(5,4,9,0)', 'rgba(5,4,9,0.72)', colors.bg]}
+          colors={[alpha(colors.bgDeep, 0), alpha(colors.bgDeep, 0.72), colors.bg]}
           locations={[0, 0.55, 0.94]}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"

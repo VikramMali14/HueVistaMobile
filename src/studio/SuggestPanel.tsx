@@ -1,7 +1,7 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Card, PressableScale, Text } from '../components';
+import { BUTTON_INK, Button, Card, PressableScale, Text } from '../components';
 import { colors, spacing, radius } from '../theme';
 import { shopCombosApi, type MatchedShade, type RecommendationResponse, type ShadeCodeScheme } from '../api';
 import { shadeDisplay } from '../shades/shadeCodes';
@@ -127,7 +127,7 @@ export function SuggestPanel({ loading, error, data, onAsk, onApply, disabled }:
             </Text>
             <Button
               label="Suggest palettes"
-              icon={<Ionicons name="sparkles" size={16} color={colors.onFill} />}
+              icon={<Ionicons name="sparkles" size={16} color={BUTTON_INK.primary} />}
               fullWidth
               onPress={onAsk}
               disabled={disabled}

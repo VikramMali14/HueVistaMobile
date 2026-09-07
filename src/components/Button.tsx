@@ -28,22 +28,36 @@ export interface ButtonProps {
 }
 
 /**
- * A filled button's ground is `accentDeep`, not `accent`.
+ * A filled brass button carries INK, not white — `.btn-brass` on the website is
+ * `background: var(--accent); color: var(--accent-on)`, and this is that rule.
  *
- * White on #7c5cff is 4.35:1 — under AA at the 15pt a button label runs. The
- * deep cut is 6.96:1. The web's own stylesheet worked this out and left the
- * note; the phone had been using the bright cut and failing the same check.
+ * Brass is a pale metal, which makes it a LIGHT surface however dark the page
+ * behind it is: white on #c08b4e is 2.1:1, unreadable. The phone used to darken
+ * the metal to #9a6a33 and put white on it, which passes the check and is
+ * exactly the muddy over-darkened cut most gold buttons end up as. Ink on the
+ * bright metal is 6.2:1 and keeps the brass looking like brass.
+ *
+ * Oxblood is the other way round: a genuinely dark ground, so `danger` carries
+ * ivory at 7.7:1.
  */
 const bg: Record<Variant, string> = {
-  primary: colors.accentDeep,
+  primary: colors.accent,
   secondary: colors.glassStrong,
   ghost: 'transparent',
   danger: colors.warmFill,
   outline: 'transparent',
 };
 
-const fg: Record<Variant, string> = {
-  primary: colors.onFill,
+/**
+ * The ink each variant's label is set in — exported because the `icon` a caller
+ * passes in has to be set in the SAME ink, and nine call sites had been guessing
+ * it. They all guessed `onFill`, which was right while primary was a dark
+ * violet and became a 2.1:1 ivory glyph the moment the ground turned to brass.
+ * Read the ink from here (`BUTTON_INK.primary`) rather than naming a token, and
+ * the icon follows the button wherever the palette goes next.
+ */
+export const BUTTON_INK: Record<Variant, string> = {
+  primary: colors.accentOn,
   secondary: colors.fg,
   ghost: colors.accentSoft,
   danger: colors.onFill,
@@ -105,7 +119,7 @@ export function Button({
         },
         // A glow on a disabled control reads as available, so drop it.
         lit && !isDisabled
-          ? glow(variant === 'danger' ? colors.warmFill : colors.accent, 0.4, 18)
+          ? glow(variant === 'danger' ? colors.warmFill : colors.accent, 0.32, 18)
           : variant === 'secondary'
             ? elevation.low
             : null,
@@ -113,7 +127,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={fg[variant]} />
+        <ActivityIndicator color={BUTTON_INK[variant]} />
       ) : (
         <View style={[styles.content, trailing ? styles.spread : null]}>
           <View style={styles.content}>
@@ -125,7 +139,7 @@ export function Button({
                 fontSize: size === 'lg' ? fontSize.base : fontSize.sm,
                 letterSpacing: -0.1,
               }}
-              color={fg[variant]}
+              color={BUTTON_INK[variant]}
             >
               {label}
             </Text>

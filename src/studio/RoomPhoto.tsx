@@ -27,6 +27,12 @@ export interface RoomPhotoProps {
   busyLabel?: string | null;
   /** One line along the bottom edge, e.g. what a tap will do right now. */
   hint?: string | null;
+  /**
+   * Whole-image midtone lift (the Brighten control), 1 = the photo untouched.
+   * Goes straight to the canvas, which applies it to the photo and the paint
+   * alike so the colour sits in the same light.
+   */
+  bright?: number;
 }
 
 /**
@@ -39,7 +45,7 @@ export interface RoomPhotoProps {
  * photo, so all of it is on screen and a tap maps straight through to it.
  */
 export const RoomPhoto = forwardRef<View, RoomPhotoProps>(function RoomPhoto(
-  { photo, photoStatus, onReload, layers, width, height, mode, onTap, onMiss, busyLabel, hint },
+  { photo, photoStatus, onReload, layers, width, height, mode, onTap, onMiss, busyLabel, hint, bright },
   shotRef,
 ) {
   const armed = mode !== 'idle' && !busyLabel;
@@ -89,7 +95,7 @@ export const RoomPhoto = forwardRef<View, RoomPhotoProps>(function RoomPhoto(
             <ActivityIndicator color={colors.accent} />
           </View>
         ) : (
-          <PaintedPhoto photo={photo} layers={layers} width={width} height={height} />
+          <PaintedPhoto photo={photo} layers={layers} width={width} height={height} bright={bright} />
         )}
       </View>
 
