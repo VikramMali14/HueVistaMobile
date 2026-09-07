@@ -1,5 +1,6 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 import { shadesApi, ShadeFilters } from '../api/shades';
+import { measuredLrv } from './colorScience';
 
 /**
  * React Query hooks for the paint catalogue. All keys start with 'shades' so the
@@ -91,4 +92,39 @@ export function usePopularShades(limit = 10) {
     select: (p) => p.content,
     staleTime: HOUR,
   });
+}
+
+/**
+ * The measured LRV behind each of a set of shade codes.
+ *
+ * A room the customer opens tomorrow knows which shade is on each wall — the
+ * backend stores the code and the hex — but not how much light that paint
+ * actually reflects, and the LRV is what the renderer corrects the hex against
+ * (see `paintTarget`). Without this, a reopened room painted its walls a
+ * measurably different colour from the one the customer had just chosen and
+ * saved, which is the worst version of the bug: the app disagreeing with itself.
+ *
+ * One small request per distinct code, cached for an hour under the `shades` key
+ * like everything else in the catalogue, so it is served from disk offline and a
+ * room with three walls in one shade asks once.
+ */
+export function useShadeLrvs(codes: readonly string[]): Record<string, number | null> {
+  const unique = Array.from(new Set(codes.filter((c) => c.trim().length > 0))).sort();
+  const results = useQueries({
+    queries: unique.map((code) => ({
+      queryKey: ['shades', 'lrv', code],
+      queryFn: () => shadesApi.list({ search: code }),
+      // The search is a partial name match as well as an exact code match, so
+      // take the row whose code IS the one asked for and ignore the rest.
+      select: (rows: Awaited<ReturnType<typeof shadesApi.list>>) =>
+        measuredLrv(rows.find((r) => r.shadeCode === code) ?? {}),
+      staleTime: HOUR,
+    })),
+  });
+
+  const out: Record<string, number | null> = {};
+  unique.forEach((code, i) => {
+    out[code] = results[i]?.data ?? null;
+  });
+  return out;
 }

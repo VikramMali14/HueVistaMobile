@@ -1,4 +1,5 @@
 import type { ShadeSummary } from '../api/shadeSchemas';
+import { measuredLrv } from './colorScience';
 
 /** A paint shade. Mirrors the fields the visualizer needs from `/api/shades`. */
 export interface Shade {
@@ -21,6 +22,17 @@ export interface Shade {
   family: string;
   /** Brand slug, when known — needed to fetch shade detail. */
   brandSlug?: string;
+  /**
+   * The brand's MEASURED Light Reflectance Value, when the catalogue row has
+   * one. Null or undefined means it does not.
+   *
+   * Carried through the pick because it is what the renderer paints: a
+   * catalogue hex is a screen approximation, the LRV is a measurement of the
+   * real paint, and the website has corrected one against the other since its
+   * visualizer was written. Without this field on the way through, the phone
+   * had nothing to correct with and painted the approximation.
+   */
+  lrv?: number | null;
 }
 
 /**
@@ -36,6 +48,7 @@ export function summaryToShade(s: ShadeSummary): Shade | null {
     brand: s.brandName ?? '',
     family: s.shadeFamily ?? '',
     brandSlug: s.brandSlug ?? undefined,
+    lrv: measuredLrv(s),
   };
 }
 
@@ -52,5 +65,7 @@ export function isCatalogueShade(shade: Shade): boolean {
 
 /** A colour with no catalogue entry — carries its hex and a name, no code. */
 export function hexOnlyShade(hex: string, name: string): Shade {
-  return { code: '', name, hex, brand: '', family: '' };
+  // No LRV on purpose: nobody measured this colour, so there is nothing to
+  // correct the hex against and the hex is painted exactly as given.
+  return { code: '', name, hex, brand: '', family: '', lrv: null };
 }

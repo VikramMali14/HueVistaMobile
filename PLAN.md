@@ -141,18 +141,35 @@ support.
 
 ---
 
-## 4. Design tokens — Midnight Spectrum
+## 4. Design tokens — brass on warm charcoal
 
-Source of truth: `HueVistaFrontEnd/src/app/globals.css`. Everything down to
-`accentGhost` in `src/theme/colors.ts` mirrors it one-for-one; below that is
-mobile-only surface treatment with no web counterpart to drift from.
+Source of truth: `HueVistaFrontEnd/src/app/globals.css`, dark theme. Everything
+down to `accentGhost` in `src/theme/colors.ts` mirrors it one-for-one; below
+that is mobile-only surface treatment with no web counterpart to drift from.
+
+**The colour rule, because this product is about colour.** The page is ink and
+paper, the brand mark is brass, and the only saturated colour on any screen is
+the PAINT. That is why the accent is a low-chroma metal rather than a vivid hue,
+and why the ground is warm (#100e0c, not a blue-black): a neutral-cold page
+tints every warm shade laid on it toward green.
+
+> **This section used to describe "Midnight Spectrum"** — a blue-black ground
+> under an electric violet accent (#7c5cff), with a violet aurora behind every
+> screen and the current paint colour piped into it as a `tint`. It carried the
+> same "mirrors globals.css one-for-one" claim this one does, and it had stopped
+> being true: the site moved to brass on warm charcoal and the phone did not
+> follow. If a future pass finds this section disagreeing with `globals.css`
+> again, the stylesheet wins — check it before trusting this file.
 
 Three token facts worth knowing before touching a colour:
 
-- **A filled button’s ground is `accentDeep` (#5a3fcc), not `accent`.** White
-  on the bright accent is 4.35:1 — under AA at the 15pt a button label runs.
-- **The accent AS TEXT is `accentSoft` (#a080ff).** #7c5cff reads 4.56:1 on the
-  page and fails the moment the text lands on a surface rather than the page.
+- **A filled brass button carries INK (`accentOn`, #17130e), not white.** Brass
+  is a pale metal, so it is a light surface however dark the page behind it is:
+  white on #c08b4e is 2.1:1. Darkening the metal until white passes is how gold
+  buttons end up muddy. Oxblood (`warmFill`) is the other way round and carries
+  ivory.
+- **The accent AS TEXT is `accentSoft` (#d0a165).** The web's `--accent-text`;
+  dark has the headroom to lift the metal rather than deepen it.
 - **`fgFaint` is never a word.** It is for rules and disabled glyphs; the
   quietest legible text colour is `fgMute`.
 
@@ -176,10 +193,13 @@ platforms draw their own chrome that round.
 
 ### 4.1 The aurora layer (mobile only)
 
-- **Aurora background.** Every screen sits on `<Aurora>` (via `Screen`): a
-  vertical wash blooming violet at the top over three drifting colour clouds,
-  in Skia. `tint` biases it toward a colour — the room flow passes the shade
-  currently on the wall, so the room being painted lights the whole screen.
+- **Ambient background.** Every screen sits on `<Aurora>` (via `Screen`): a
+  warm vertical wash over two very faint brass blooms, in Skia. It has almost
+  no colour in it **on purpose**, and it takes no `tint`. It used to be three
+  saturated clouds with the current paint colour piped in, which is
+  simultaneous contrast working against the one thing the customer is judging:
+  a coloured surround pushes every shade laid on it, and tinting the surround
+  with the shade itself desaturates exactly the colour being decided about.
 - **Depth over borders.** Cards are translucent (`colors.glass`) with a top-lit
   edge and a real shadow, not opaque blocks separated by hairlines.
 - **Floating tab bar.** A dark capsule inset from all three edges, drawn over

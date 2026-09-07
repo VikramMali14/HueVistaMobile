@@ -28,7 +28,11 @@ export interface MeterProps {
 export function Meter({ value, max, label, showCount = true, style }: MeterProps) {
   const safeMax = max > 0 ? max : 1;
   const ratio = Math.max(0, Math.min(1, value / safeMax));
-  const fill = ratio >= 0.9 ? colors.danger : ratio >= 0.7 ? colors.warning : colors.accent;
+  // Brass → terracotta-as-words → terracotta. Three fills that are three
+  // signals: the brass says nothing is wrong, and the warm pair says it is
+  // getting close and then that it is. (The middle band used to be `warning`,
+  // which is now the brass lightened — a lightening is not a signal.)
+  const fill = ratio >= 0.9 ? colors.danger : ratio >= 0.7 ? colors.warm : colors.accent;
 
   const progress = useAnimatedValue(0);
 

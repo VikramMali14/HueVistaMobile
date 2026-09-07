@@ -13,8 +13,12 @@ export type StatusTone = 'new' | 'progress' | 'done' | 'expired' | 'neutral';
  * the terracotta fill, and the sage's text cut.
  */
 const toneColor: Record<StatusTone, string> = {
-  new: colors.accentSoft,
-  progress: colors.warning,
+  // Brass is the app's "something is happening" colour, so it goes to the tone
+  // that means it. A brand-new thing needs no hue at all — it used to take the
+  // brass and left `progress` reaching for a near-identical lightening of it,
+  // which is two tones the eye cannot tell apart.
+  new: colors.fg,
+  progress: colors.accentSoft,
   done: colors.success,
   expired: colors.dangerSoft,
   neutral: colors.fgMute,

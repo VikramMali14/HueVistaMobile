@@ -101,17 +101,36 @@ export function lrvFromHex(hex: string): number {
 }
 
 /**
- * The shade's Light Reflectance Value: the brand's measurement when there is
- * one, otherwise derived from the hex.
+ * The brand's MEASURED Light Reflectance Value, and nothing else. Null when the
+ * catalogue row carries none.
+ *
+ * Kept apart from `lrvOf` because the renderer must not confuse the two. The
+ * painted colour is the hex corrected to this measurement (see
+ * `lrvCorrectedRgb01` in the engine), and that correction only means something
+ * when the number came off a real paint chip. Handing it a value derived from
+ * the hex asks the hex to correct itself, which is either a no-op or, once
+ * rounding is in play, a quiet nudge to a colour nobody measured.
  *
  * The wire type is a BigDecimal, which arrives as a number or a string
  * depending on the serializer, so both are accepted.
  */
+export function measuredLrv(shade: { lrv?: number | string | null }): number | null {
+  if (shade.lrv == null) return null;
+  const n = typeof shade.lrv === 'string' ? Number(shade.lrv) : shade.lrv;
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+/**
+ * The shade's Light Reflectance Value for DISPLAY: the brand's measurement when
+ * there is one, otherwise derived from the hex.
+ *
+ * Right for the things a customer reads — how light this is, which depth band it
+ * falls in — where an approximation beats an em dash. Wrong for painting; see
+ * `measuredLrv`.
+ */
 export function lrvOf(shade: { hexCode?: string | null; lrv?: number | string | null }): number | null {
-  if (shade.lrv != null) {
-    const n = typeof shade.lrv === 'string' ? Number(shade.lrv) : shade.lrv;
-    if (Number.isFinite(n)) return Math.round(n);
-  }
+  const measured = measuredLrv(shade);
+  if (measured != null) return measured;
   return shade.hexCode ? lrvFromHex(shade.hexCode) : null;
 }
 

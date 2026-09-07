@@ -1,23 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import { Canvas, Circle, RadialGradient, Rect, LinearGradient, vec } from '@shopify/react-native-skia';
 import { colors, alpha, duration, easing, useAnimatedValue, useReducedMotion } from '../theme';
 
 /**
- * The ambient background every screen sits on: a vertical wash that blooms
- * violet at the top and falls to near-black, with three soft colour clouds
- * drifting behind the content.
+ * The ambient ground every screen sits on: a warm vertical wash that lifts near
+ * the top and falls to near-black, with two very faint brass blooms behind the
+ * content.
  *
- * Why this exists: the app was a flat #0a090f rectangle everywhere, so all
- * depth had to come from hairline borders, and every screen looked like the
- * same empty box. The wash gives the layout somewhere to sit.
+ * Why it exists: the app was a flat rectangle everywhere, so all depth had to
+ * come from hairline borders and every screen looked like the same empty box.
+ * The wash gives the layout somewhere to sit.
  *
- * `tint` shifts the clouds toward a specific colour. The Studio passes the
- * shade currently on the wall, so the room you are painting quietly lights the
- * whole screen — the one place the background knows what the app is doing.
+ * ── Why it has almost no colour in it ─────────────────────────────────────
+ * This used to be three saturated clouds — violet, deep violet and sage — and
+ * the Studio and the shade page passed the CURRENT PAINT COLOUR in as a `tint`,
+ * so the wall you were judging lit the whole screen behind it.
+ *
+ * That is backwards for a colour tool, and it is the single biggest reason a
+ * shade looked one way in the app and another on the site. A wash of colour
+ * behind a swatch is simultaneous contrast: the eye reads a colour relative to
+ * its surround, so a violet ground pushes every warm shade toward green and
+ * every neutral toward yellow — and tinting the ground with the shade ITSELF is
+ * the worst case, because it desaturates the one colour the customer is trying
+ * to decide about. Nobody reads that as a background problem. They read it as
+ * the app showing the wrong paint.
+ *
+ * So the ground is struck from the charcoal and the brass only, both at
+ * chromas low enough to sit under either half of the colour wheel without
+ * arguing with it. There is no `tint` prop any more, on purpose.
  *
  * Rendering notes:
- *  - Clouds are radial gradients that fade to fully transparent, not blurred
+ *  - Blooms are radial gradients that fade to fully transparent, not blurred
  *    circles. Same look, no image filter, far cheaper to composite.
  *  - The drift is a native-driver transform on the wrapping view, so the Skia
  *    scene is painted once and never re-rendered per frame.
@@ -27,8 +41,6 @@ import { colors, alpha, duration, easing, useAnimatedValue, useReducedMotion } f
  */
 
 export interface AuroraProps {
-  /** Hex to bias the clouds toward. Defaults to the brand accent. */
-  tint?: string | null;
   /** 0 = off, 1 = default presence. Auth screens go brighter, lists calmer. */
   intensity?: number;
   /** Ambient drift. Off for screens where a still background reads better. */
@@ -41,14 +53,29 @@ export interface AuroraProps {
  */
 const AURORA_DOWNSCALE = 2;
 
-/** The three cloud positions, as fractions of the canvas box. */
-const CLOUDS = [
-  { x: 0.16, y: 0.1, r: 0.78, weight: 0.5 },
-  { x: 0.96, y: 0.3, r: 0.66, weight: 0.34 },
-  { x: 0.44, y: 0.72, r: 0.9, weight: 0.16 },
+/**
+ * The two bloom positions, as fractions of the canvas box.
+ *
+ * Two, not three. The third sat at the bottom of every screen behind whatever
+ * the content had ended with, and its only job was to make the decoration look
+ * deliberate — which is the tell of a background designed for a screenshot
+ * rather than for the thing in front of it.
+ */
+const BLOOMS = [
+  { x: 0.18, y: 0.06, r: 0.82, weight: 0.55 },
+  { x: 0.94, y: 0.34, r: 0.62, weight: 0.3 },
 ] as const;
 
-export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
+/**
+ * Peak opacity of a bloom at `intensity = 1`.
+ *
+ * Deliberately tiny. At the old 0.42 the brass would read as a gold haze in the
+ * corner of every screen; at this weight it is the difference between a flat
+ * black rectangle and a lit room, and you cannot name the colour doing it.
+ */
+const BLOOM_PEAK = 0.1;
+
+export function Aurora({ intensity = 1, animated = true }: AuroraProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const drift = useAnimatedValue(0);
   // A background that drifts forever is the first thing a person sensitive to
@@ -64,7 +91,7 @@ export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
   useEffect(() => {
     if (!moving) return;
     // One long loop up and back. Reversing rather than resetting keeps the
-    // clouds from snapping back to their start position every cycle.
+    // blooms from snapping back to their start position every cycle.
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(drift, {
@@ -85,13 +112,11 @@ export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
     return () => loop.stop();
   }, [moving, drift]);
 
-  const base = tint || colors.accent;
-
   const style = {
     transform: [
-      { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-14, 14] }) },
-      { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [10, -18] }) },
-      { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) },
+      { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-10, 10] }) },
+      { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [8, -12] }) },
+      { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) },
     ],
   };
 
@@ -99,9 +124,9 @@ export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
     <View style={styles.root} pointerEvents="none" onLayout={onLayout}>
       <Animated.View style={[StyleSheet.absoluteFill, style]}>
         {Platform.OS === 'web' ? (
-          <WebAurora tint={base} intensity={intensity} />
+          <WebAurora intensity={intensity} />
         ) : size.width > 0 && size.height > 0 ? (
-          <SkiaAurora width={size.width} height={size.height} tint={base} intensity={intensity} />
+          <SkiaAurora width={size.width} height={size.height} intensity={intensity} />
         ) : null}
       </Animated.View>
     </View>
@@ -111,12 +136,10 @@ export function Aurora({ tint, intensity = 1, animated = true }: AuroraProps) {
 function SkiaAurora({
   width,
   height,
-  tint,
   intensity,
 }: {
   width: number;
   height: number;
-  tint: string;
   intensity: number;
 }) {
   // The canvas is oversized so the drift transform never exposes an edge.
@@ -134,18 +157,11 @@ function SkiaAurora({
    * The scene is nothing but smooth gradients, which survive the resample with
    * no visible difference, so quartering the pixels is free.
    *
-   * All the drawing below works in the reduced space: the cloud positions are
+   * All the drawing below works in the reduced space: the bloom positions are
    * fractions of `cw`/`ch`, so they need no separate adjustment.
    */
   const cw = w / AURORA_DOWNSCALE;
   const ch = h / AURORA_DOWNSCALE;
-
-  // Each cloud gets the tint at its own strength, plus a brand colour alongside
-  // it so a tinted screen still reads as HueVista rather than as one flat hue.
-  const cloudColors = useMemo(
-    () => [tint, colors.accentDeep, colors.success],
-    [tint],
-  );
 
   return (
     <Canvas
@@ -161,29 +177,29 @@ function SkiaAurora({
         transformOrigin: 'top left',
       }}
     >
-      {/* Vertical wash. */}
+      {/* Vertical wash — four steps of the same warm charcoal, not four hues. */}
       <Rect x={0} y={0} width={cw} height={ch}>
         <LinearGradient
           start={vec(cw * 0.5, 0)}
           end={vec(cw * 0.5, ch)}
-          colors={[colors.auroraMid, colors.auroraDeep, colors.bg, colors.bgDeep]}
-          positions={[0, 0.34, 0.68, 1]}
+          colors={[colors.auroraLift, colors.auroraMid, colors.bg, colors.bgDeep]}
+          positions={[0, 0.3, 0.66, 1]}
         />
       </Rect>
 
-      {CLOUDS.map((cloud, i) => {
-        const c = vec(cw * cloud.x, ch * cloud.y);
-        const r = Math.max(cw, ch) * cloud.r;
-        const peak = Math.min(0.42, cloud.weight * 0.62 * intensity);
+      {BLOOMS.map((bloom, i) => {
+        const c = vec(cw * bloom.x, ch * bloom.y);
+        const r = Math.max(cw, ch) * bloom.r;
+        const peak = BLOOM_PEAK * bloom.weight * intensity;
         return (
           <Circle key={i} c={c} r={r}>
             <RadialGradient
               c={c}
               r={r}
               colors={[
-                alpha(cloudColors[i], peak),
-                alpha(cloudColors[i], peak * 0.34),
-                alpha(cloudColors[i], 0),
+                alpha(colors.accent, peak),
+                alpha(colors.accent, peak * 0.34),
+                alpha(colors.accent, 0),
               ]}
               positions={[0, 0.45, 1]}
             />
@@ -195,11 +211,11 @@ function SkiaAurora({
 }
 
 /**
- * Web stand-in. No radial gradients without extra deps, so this stacks a few
- * very low-opacity rounded blocks to fake the bloom. It is not the real thing;
- * it just keeps `expo start --web` looking deliberate.
+ * Web stand-in. No radial gradients without extra deps, so this stacks a couple
+ * of very low-opacity blocks to fake the bloom. It is not the real thing; it
+ * just keeps `expo start --web` looking deliberate.
  */
-function WebAurora({ tint, intensity }: { tint: string; intensity: number }) {
+function WebAurora({ intensity }: { intensity: number }) {
   return (
     <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg }]}>
       <View
@@ -216,7 +232,7 @@ function WebAurora({ tint, intensity }: { tint: string; intensity: number }) {
           width: '110%',
           aspectRatio: 1,
           borderRadius: 9999,
-          backgroundColor: alpha(tint, 0.16 * intensity),
+          backgroundColor: alpha(colors.accent, BLOOM_PEAK * 0.55 * intensity),
         }}
       />
       <View
@@ -227,7 +243,7 @@ function WebAurora({ tint, intensity }: { tint: string; intensity: number }) {
           width: '90%',
           aspectRatio: 1,
           borderRadius: 9999,
-          backgroundColor: alpha(colors.accentDeep, 0.12 * intensity),
+          backgroundColor: alpha(colors.accent, BLOOM_PEAK * 0.3 * intensity),
         }}
       />
     </View>
