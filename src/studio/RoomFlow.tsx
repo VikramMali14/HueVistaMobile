@@ -23,6 +23,7 @@ import {
   SheetModal,
   Text,
   WorkCard,
+  BUTTON_INK,
 } from '../components';
 import { colors, spacing, radius, alpha, hairline, elevation, useElapsedSeconds } from '../theme';
 import { haptics } from '../haptics';
@@ -49,6 +50,7 @@ import {
 } from '../engine';
 import { useRecentShades } from '../shades/recentShades';
 import { useShadeLrvs } from '../shades/queries';
+import { undertoneClash } from '../shades/colorScience';
 import { shadeDisplay } from '../shades/shadeCodes';
 import { isCatalogueShade, type Shade } from '../shades/types';
 import { useRequestMoreProjects, useShadeCodeScheme } from '../account/queries';
@@ -285,6 +287,34 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
 
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
   const paintedCount = layers.length;
+
+  /**
+   * Whether two colours in this room will fight, in the words the counter uses.
+   *
+   * The website has warned about this since its visualizer was written and the
+   * phone had no opinion at all — which is the wrong way round, because the
+   * phone is the one being held in the actual room. A warm wall against a cool
+   * one, or two whites whose hidden tints pull opposite ways, is the complaint
+   * that comes back after the painting is done.
+   *
+   * It is a note, not a refusal: some people want the contrast, and the app does
+   * not get to overrule the person who is going to live there.
+   */
+  const clashNote = useMemo(() => {
+    const painted = regions
+      .map((r) => ({ label: r.label ?? r.category ?? 'a surface', colour: appliedColor(r) }))
+      .filter((r): r is { label: string; colour: Applied } => r.colour !== null);
+    for (let i = 0; i < painted.length; i++) {
+      for (let j = i + 1; j < painted.length; j++) {
+        const verdict = undertoneClash(painted[i].colour.hex, painted[j].colour.hex);
+        if (verdict.clash) return `${painted[i].label} and ${painted[j].label}: ${verdict.reason}.`;
+      }
+    }
+    return null;
+    // `appliedColor` reads `overrides`, which is the other half of what makes a
+    // freshly tapped swatch count here rather than only the saved one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regions, overrides]);
 
   async function applyShade(shade: Shade) {
     if (selectedRegionId == null || readOnly) {
@@ -866,7 +896,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
                 label="Pick colours"
                 size="lg"
                 fullWidth
-                icon={<Ionicons name="color-palette-outline" size={18} color={colors.onFill} />}
+                icon={<Ionicons name="color-palette-outline" size={18} color={BUTTON_INK.primary} />}
                 onPress={() => setStepOverride('colour')}
               />
               <Button
@@ -947,6 +977,15 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               />
             )}
 
+            {clashNote ? (
+              <View style={styles.clash}>
+                <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
+                <Text variant="caption" color={colors.warning} style={styles.clashText}>
+                  {clashNote}
+                </Text>
+              </View>
+            ) : null}
+
             {saveError ? (
               <Text variant="caption" color={colors.warning}>
                 {saveError}
@@ -960,7 +999,7 @@ export function RoomFlow({ id, incoming }: RoomFlowProps) {
               size="lg"
               fullWidth
               disabled={!readOnly && paintedCount === 0}
-              icon={<Ionicons name="document-text-outline" size={18} color={colors.onFill} />}
+              icon={<Ionicons name="document-text-outline" size={18} color={BUTTON_INK.primary} />}
               onPress={openBoard}
             />
             {!readOnly && paintedCount === 0 ? (
@@ -1309,6 +1348,8 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   title: { flex: 1 },
   titleTools: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  clash: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs },
+  clashText: { flex: 1 },
   compare: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -221,7 +221,7 @@ export function FloatingTabBar({
             },
           ])}
         >
-          <Ionicons name={action.icon} size={26} color={colors.onFill} />
+          <Ionicons name={action.icon} size={26} color={colors.accentOn} />
         </PressableScale>
       ) : null}
       </View>
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: alpha(colors.onFill, 0.18),
+    borderColor: alpha(colors.accentOn, 0.18),
     ...glow(colors.accent, 0.5, 20),
   },
   wrap: {

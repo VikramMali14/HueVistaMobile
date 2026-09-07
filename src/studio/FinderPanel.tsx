@@ -1,6 +1,6 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, PressableScale, Text } from '../components';
+import { BUTTON_INK, Button, PressableScale, Text } from '../components';
 import { colors, spacing, radius, alpha } from '../theme';
 import { useShadeMatch } from '../shades/queries';
 import { useAllowedBrands, useShadeCodeScheme } from '../account/queries';
@@ -70,7 +70,7 @@ export function FinderPanel({ picking, onTogglePicking, pickedHex, onApply, disa
           <Ionicons
             name={picking ? 'close' : 'eyedrop-outline'}
             size={16}
-            color={picking ? colors.fg : colors.onFill}
+            color={picking ? BUTTON_INK.secondary : BUTTON_INK.primary}
           />
         }
         onPress={onTogglePicking}

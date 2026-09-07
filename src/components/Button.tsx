@@ -48,7 +48,15 @@ const bg: Record<Variant, string> = {
   outline: 'transparent',
 };
 
-const fg: Record<Variant, string> = {
+/**
+ * The ink each variant's label is set in — exported because the `icon` a caller
+ * passes in has to be set in the SAME ink, and nine call sites had been guessing
+ * it. They all guessed `onFill`, which was right while primary was a dark
+ * violet and became a 2.1:1 ivory glyph the moment the ground turned to brass.
+ * Read the ink from here (`BUTTON_INK.primary`) rather than naming a token, and
+ * the icon follows the button wherever the palette goes next.
+ */
+export const BUTTON_INK: Record<Variant, string> = {
   primary: colors.accentOn,
   secondary: colors.fg,
   ghost: colors.accentSoft,
@@ -119,7 +127,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={fg[variant]} />
+        <ActivityIndicator color={BUTTON_INK[variant]} />
       ) : (
         <View style={[styles.content, trailing ? styles.spread : null]}>
           <View style={styles.content}>
@@ -131,7 +139,7 @@ export function Button({
                 fontSize: size === 'lg' ? fontSize.base : fontSize.sm,
                 letterSpacing: -0.1,
               }}
-              color={fg[variant]}
+              color={BUTTON_INK[variant]}
             >
               {label}
             </Text>

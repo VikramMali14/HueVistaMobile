@@ -54,7 +54,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "jest"
+    "test": "jest",
+    "check:shaders": "node scripts/check-shaders.mjs"
   },
   "private": true
 }

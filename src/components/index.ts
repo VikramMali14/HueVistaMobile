@@ -1,6 +1,6 @@
 export { Text, Serif } from './Text';
 export type { TextProps, SerifProps } from './Text';
-export { Button } from './Button';
+export { Button, BUTTON_INK } from './Button';
 export type { ButtonProps } from './Button';
 export { Card } from './Card';
 export type { CardProps, CardTone } from './Card';

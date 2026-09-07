@@ -20,6 +20,7 @@ import {
   EmptyState,
   Disclosure,
   PressableScale,
+  BUTTON_INK,
 } from '../../src/components';
 import { StepRail } from '../../src/studio/StepRail';
 import { colors, spacing, radius, hairline, alpha } from '../../src/theme';
@@ -359,7 +360,7 @@ export default function NewRoom() {
             label="Take a photo"
             size="lg"
             fullWidth
-            icon={<Ionicons name="camera" size={18} color={colors.onFill} />}
+            icon={<Ionicons name="camera" size={18} color={BUTTON_INK.primary} />}
             onPress={() => pick('camera')}
           />
           <View style={styles.altRow}>
