@@ -33,6 +33,16 @@ export interface Shade {
    * had nothing to correct with and painted the approximation.
    */
   lrv?: number | null;
+  /**
+   * The brand's own depth word — "light", "medium" or "dark" — when the
+   * catalogue row states one.
+   *
+   * `depthOf` prefers it over anything derived, because it is the word the brand
+   * prints on its own fan deck and the word the website shows. Carried here so a
+   * swatch in a grid can be labelled from the catalogue rather than from a
+   * screen approximation of the paint.
+   */
+  tonality?: string | null;
 }
 
 /**
@@ -49,6 +59,7 @@ export function summaryToShade(s: ShadeSummary): Shade | null {
     family: s.shadeFamily ?? '',
     brandSlug: s.brandSlug ?? undefined,
     lrv: measuredLrv(s),
+    tonality: s.tonality ?? null,
   };
 }
 
@@ -67,5 +78,5 @@ export function isCatalogueShade(shade: Shade): boolean {
 export function hexOnlyShade(hex: string, name: string): Shade {
   // No LRV on purpose: nobody measured this colour, so there is nothing to
   // correct the hex against and the hex is painted exactly as given.
-  return { code: '', name, hex, brand: '', family: '', lrv: null };
+  return { code: '', name, hex, brand: '', family: '', lrv: null, tonality: null };
 }

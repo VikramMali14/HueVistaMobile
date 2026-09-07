@@ -25,6 +25,19 @@ export interface SwatchProps {
    * a wall of unlabelled colour squares makes them guess.
    */
   showScience?: boolean;
+  /**
+   * The brand's measured Light Reflectance Value and its own depth word, when
+   * the catalogue row carries them.
+   *
+   * Both feed the depth band printed on the chip, and the band was wrong without
+   * them: it was derived from the hex alone, which is a SCREEN APPROXIMATION of
+   * the paint. The website bands the same shade off `tonality` and the measured
+   * LRV, so a chip could read "Medium" here and "Light" there for one colour —
+   * a customer comparing their phone against the shop's screen sees the product
+   * disagreeing with itself about what it sells.
+   */
+  lrv?: number | null;
+  tonality?: string | null;
   style?: ViewStyle;
 }
 
@@ -46,12 +59,14 @@ export function Swatch({
   onLongPress,
   size = 'md',
   showScience,
+  lrv,
+  tonality,
   style,
 }: SwatchProps) {
   const box = BOX[size];
   const ink = inkOn(hex);
   const tone = undertone(hex);
-  const depth = depthOf({ hexCode: hex });
+  const depth = depthOf({ hexCode: hex, lrv, tonality });
 
   const body = (
     <>

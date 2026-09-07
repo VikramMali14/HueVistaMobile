@@ -235,6 +235,8 @@ export default function Home() {
               code={shadeDisplay(scheme, { code: shade.code, name: shade.name }).label}
               size="lg"
               showScience
+              lrv={shade.lrv}
+              tonality={shade.tonality}
               style={styles.popularChip}
               onPress={() =>
                 router.push({

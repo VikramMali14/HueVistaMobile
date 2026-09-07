@@ -180,6 +180,8 @@ export default function Library() {
                 code={shadeDisplay(scheme, { code: s.code, name: s.name }).label}
                 size="lg"
                 showScience
+                lrv={s.lrv}
+                tonality={s.tonality}
                 style={styles.gridItem}
                 onPress={() =>
                   router.push({

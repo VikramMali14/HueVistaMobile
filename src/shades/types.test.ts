@@ -19,11 +19,18 @@ describe('summaryToShade', () => {
       family: 'Off Whites',
       brandSlug: 'asian-paints',
       lrv: null,
+      tonality: null,
     });
   });
 
   it('carries the brand\'s measured LRV through, because the renderer paints it', () => {
     expect(summaryToShade({ shadeCode: '9436', hexCode: '#d8d2c4', lrv: '68.4' })?.lrv).toBe(68);
+  });
+
+  it("carries the brand's own depth word, which depthOf prefers over anything derived", () => {
+    expect(summaryToShade({ shadeCode: '9436', hexCode: '#d8d2c4', tonality: 'medium' })?.tonality).toBe(
+      'medium',
+    );
   });
 
   it('reports no LRV rather than one derived from the hex', () => {
@@ -74,6 +81,7 @@ describe('hexOnlyShade', () => {
       brand: '',
       family: '',
       lrv: null,
+      tonality: null,
     });
   });
 });
